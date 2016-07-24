@@ -50,12 +50,38 @@ static int get_buffer_offset_from_pos(int cx, int cy)
         }
         if(buffer[i] == '\n') {
             y++;
+            if(buffer[i+1] == '\r') {
+                i++;
+            }
         }
         if(buffer[i] == 0) {
             break;
         }
     }
     return buff_size;
+}
+
+/*
+ * Get position from buffer offset
+ */
+static void get_pos_from_buffer_offset(int* x, int* y, int offset)
+{
+    int i = 0;
+    *x = 0;
+    *y = 0;
+    for(i=0; i<buff_size; i++) {
+        if(buffer[i] == '\n') {
+            (*y)++;
+            if(buffer[i+1] == '\r') {
+                i++;
+            }
+            *x = 0;
+        } else if(buffer[i] == 0 || i >= offset) {
+            break;
+        } else {
+            (*x)++;
+        }
+    }
 }
 
 /*
@@ -101,6 +127,9 @@ static void move_cursor(int* cx, int* cy, int* sx, int* sy, int dir)
     for(i=0; i<buff_size; i++) {
         if(buffer[i] == '\n') {
             y++;
+            if(buffer[i+1] == '\r') {
+                i++;
+            }
         }
 
         if(y == by) {
@@ -211,16 +240,37 @@ static void insert_at_cursor(char c)
         sz_inc = 2;
         break;
     case KEY_LO_BACKSPACE:
-        sz_inc = -1;
-        if(bx > 0) {
-            move_cursor(&cpos_x, &cpos_y, &scpos_x, &scpos_y, DIR_LEFT);
-        } else if(by > 0){
-            cpos_x = 1024;
-            move_cursor(&cpos_x, &cpos_y, &scpos_x, &scpos_y, DIR_UP);
+        if(bps > 0 && buffer[bps-1] == '\r') {
+            buffer[bps-1] = ' ';
+            sz_inc = -1;
+            if(bps > 1 && buffer[bps-2] == '\n') {
+                buffer[bps-2] = ' ';
+                sz_inc = -2;
+            }
+        } else if(bps > 0) {
+            sz_inc = -1;
+        } else {
+            sz_inc = 0;
+        }
+
+        get_pos_from_buffer_offset(&bx, &by, bps+sz_inc);
+        cpos_x = bx - scpos_x;
+        if(cpos_x < 0) {
+            scpos_x += cpos_x;
+            cpos_x = 0;
+            if(scpos_x < 0) {
+                scpos_x = 0;
+            }
+        }
+        cpos_y = by - scpos_y;
+        if(cpos_y < 0) {
+            scpos_y += cpos_y;
+            cpos_y = 0;
+            if(scpos_y < 0) {
+                scpos_y = 0;
+            }
         }
         break;
-    default:
-        sz_inc = 1;
     }
 
     buff_aux = malloc(buff_size+1+sz_inc);
@@ -232,16 +282,18 @@ static void insert_at_cursor(char c)
         bpd++;
         buff_aux[bpd] = '\r';
         bpd++;
+        memcpy(&buff_aux[bpd], &buffer[bps], buff_size + 1 - bps);
         break;
     case KEY_LO_BACKSPACE:
-        bpd--;
+        bpd += sz_inc;
+        memcpy(&buff_aux[bpd], &buffer[bps], buff_size + 1 - bps);
         break;
     default:
         buff_aux[bpd] = c;
         bpd++;
+        memcpy(&buff_aux[bpd], &buffer[bps], buff_size + 1 - bps);
     }
 
-    memcpy(&buff_aux[bpd], &buffer[bps], buff_size + 1 - bps);
     free(buffer);
     buffer = buff_aux;
     buff_size = buff_size + sz_inc;

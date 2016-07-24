@@ -22,7 +22,7 @@ The building process is expected to be run in a Linux system.
     * dd and mkfs with ext2 support to create images.
     * qemu to test the images in a virtual machine.
 
-2. Get full source code tree (see previous section). In this tree there are the following directories:
+2. Get full source code tree. In this tree there are the following directories:
     * images: output folder for generated images.
     * source: source code.
         * boot: boot sector.
@@ -48,9 +48,9 @@ Once the computer is turned on, and after boot sequence, the operating system wi
 * hd0 - First hard disk drive
 * hd1 - Second hard disk drive
 
-In general, paths can be specified as relative to the current working directory or as absolute paths. After typing a command, ENTER must be pressed in order to execute it. There are different types of valid commands:
+Paths can be specified as relative to the current working directory or as absolute paths. After typing a command, ENTER must be pressed in order to execute it. There are different types of valid commands:
 * A valid drive name will cause the system to set it as active drive.
-* The path of a binary file will cause the system to execute it.
+* The path of a binary file (.bin) will cause the system to execute it.
 * There are also some built-in commands in the CLI. See next subsection.
 
 ###CLI Built-in commands
@@ -75,7 +75,7 @@ copy rme.txt rmecopy.txt
 ```
 
 ####DEL
-Delete a file. One parameter is expected: the path of the file to delete.
+Delete a file or a directory. One parameter is expected: the path of the file or directory to delete.
 
 Example:
 ```
@@ -94,7 +94,7 @@ md dir
 ```
 
 ####REN
-Rename a file. Two parameters are expected: the path of the file to rename, and the new name.
+Rename a file or a directory. Two parameters are expected: the path of the file or directory to rename, and the new name.
 
 Example:
 ```
@@ -102,7 +102,7 @@ ren /dir/rme.txt readme.txt
 ```
 
 ####SYS
-Clone the system disk in another disk. The target disk will be able to boot and will contain a copy of the files in the current system device. Any data in the target drive will be lost. The target disk must have at least 1.44 MB of space. One parameter is expected: the target drive name. 
+Clone the system disk in another disk. The target disk will be able to boot and will contain a copy of the files in the current system device. Any data in the target drive will be lost. The target disk must have at least 1.44 MB of space. One parameter is expected: the target drive name.
 
 Example:
 ```

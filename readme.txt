@@ -118,8 +118,8 @@ Example:
 md dir
 
 ren
-Rename a file. Two parameters are expected: the path of the file to rename, and
-the new name.
+Rename a file or directory. Two parameters are expected: the path of the file
+to rename, and the new name.
 
 Example:
 ren /dir/rme.txt readme.txt

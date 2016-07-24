@@ -8,7 +8,7 @@
 /*
  * Init filesystem
  */
-int fs_init();
+int fs_init(void);
 /*
  * Get filesystem info
  */

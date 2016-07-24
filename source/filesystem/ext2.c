@@ -990,7 +990,7 @@ int fs_set_drive(int drive)
 /*
  * Init filesystem
  */
-int fs_init()
+int fs_init(void)
 {
     int result = 0;
     strcpy(fs_cwd.path, "/");
