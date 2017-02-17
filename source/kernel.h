@@ -6,22 +6,27 @@
 #define _KERNEL_H
 
 /*
- * Defines and data types
+ * Hardware related disk information is handled by the kernel module.
+ * File system related information is handled by file system module
  */
-#define K_MAX_DRIVE 4
+#define MAX_DISK 4
 
-struct KDRIVEINFO {
-    int fstype;
-    int fssize;
-    int sectors;
-    int sides;
-    int cylinders;
+/* Size of a disk sector */
+#define SECTOR_SIZE 512
+
+struct DISKINFO {
+    uint     id;          /* Disk id */
+    uchar    name[4];     /* Disk name */
+    uint     fstype;      /* File system type: see ulib.h */
+    uint32_t fssize;      /* Number of blocks in file system */
+    uint     sectors;
+    uint     sides;
+    uint     cylinders;
+    uint32_t size;        /* Disk size (MB) */
 };
 
-/*
- * Shared variables
- */
-extern struct KDRIVEINFO kdinfo[K_MAX_DRIVE];
-extern char device;   /* Boot drive device */
+extern struct DISKINFO disk_info[MAX_DISK]; /* Disks info */
+extern uchar system_disk;  /* System disk */
+extern uchar serial_status;  /* Serial port status */
 
 #endif   /* _KERNEL_H */

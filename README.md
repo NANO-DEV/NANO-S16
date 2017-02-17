@@ -1,134 +1,134 @@
 #NANO S16
 
 NANO S16 is a small operating system for 16-bit x86 architectures which operates in real mode. Most notable features are:
-* It's written in C and NASM.
-* Partially based on DOS.
-* Implements a subset of the ext2 file system specification.
-* Relies on the BIOS functions for hardware handling.
+* It's written in C and NASM
+* Implements a custom file system (NSFS)
+* Relies on the BIOS functions for hardware handling
 
 This software is intended to be just a hobby OS. Creator makes no warranty for the use of its products and assumes no responsibility for any errors which may appear in this document nor does it make a commitment to update the information contained herein.
 
 System requirements:
-* x86 Compatible computer
+* x86 compatible computer
 * 64Kb of RAM
 * 1.44Mb disk
 * VGA graphics card
 
 ##Building
-The building process is expected to be run in a Linux system.
+The building process is expected to be executed in a Linux system. In Windows 10 it can be built using Windows Subsystem for Linux.
 
 1. Install required software:
-    * bcc, nasm and ld86 to build the OS and apps.
-    * dd and mkfs with ext2 support to create images.
-    * qemu to test the images in a virtual machine.
+    * make, gcc, bcc, nasm and ld86 to build the OS and apps
+    * dd to create disk images
+    * optionally install qemu x86 emulator to test the images in a virtual machine
+    * optionally install exuberant-ctags to generate tags
 
-2. Get full source code tree. In this tree there are the following directories:
-    * images: output folder for generated images.
-    * source: source code.
-        * boot: boot sector.
-        * clib: code related to interface with external programs.
-        * filesystem: native file system support.
-        * programs: external programs, such as text editor.
+2. Get full source code tree. In this tree there are several directories:
+    * fstools: disk image generation tool
+    * images: output folder for generated disk images
+    * source: source code
+        * boot: code for the boot sector image
+        * ulib: library to develop user programs
+        * programs: user programs
 
-3. Build: Customize source/Makefile and build.sh scripts. Run build.sh to build everything. Images will be generated in the "images" directory.
+3. Build: Customize `Makefile` and `source/Makefile` files. Run `make` from the root directory to build everything. Images will be generated in the "images" directory.
 
 ##Testing
-After building, customize and run "test.sh" script to test the OS in a virtual machine.
+After building, run `make qemu` (linux) or `qemu.bat` (windows) from the root directory to test the OS in a virtual machine.
 
-It's also possible to just run a virtual machine using a previously generated system image, without the need of building the system.
-
-The system can be tested in real hardware if images are copied to physical disks.
+The system can operate real hardware if images are written to physical disks.
 
 ##User manual
-If the OS is not yet installed on the target computer, a system disk in a proper drive will be needed to start it for first time. See later sections for information about how to install (clone system) once it is running.
+A system disk is needed to start the OS for first time. See later sections for information about how to install (clone system) once it is running.
 
-Once the computer is turned on, and after boot sequence, the operating system will automatically start the Command Line Interface (CLI). The prompt will show the active drive (at start it is the one which has performed the system boot) and the current path. Possible drive names are:
-* fd0 - First floppy disk drive
-* fd1 - Second floppy disk drive
-* hd0 - First hard disk drive
-* hd1 - Second hard disk drive
+Once the computer is turned on, and after boot sequence, the operating system automatically starts the Command Line Interface (CLI). The prompt will show a `>` symbol and a blinking cursor where a command is expected to be introduced. There are two different types of valid commands:
+* The path of an executable file (`.bin`) will cause the system to execute it
+* There are also some built-in commands in the CLI. See next subsection
 
-Paths can be specified as relative to the current working directory or as absolute paths. After typing a command, ENTER must be pressed in order to execute it. There are different types of valid commands:
-* A valid drive name will cause the system to set it as active drive.
-* The path of a binary file (.bin) will cause the system to execute it.
-* There are also some built-in commands in the CLI. See next subsection.
+The `.bin` suffix can be omitted for executable files. After typing a command, `ENTER` must be pressed in order to execute it.
+
+Paths can be specified as absolute paths or relative to the system disk. When specified as absolute, they must begin with a disk identifier. Possible disk identifiers are:
+* fd0 - First floppy disk
+* fd1 - Second floppy disk
+* hd0 - First hard disk
+* hd1 - Second hard disk
+
+Path components are separated with slashes `/`. The root directory of a disk can be omitted or referred as `.` when it's the last path component.
+
+Examples of valid paths:
+```
+fd0
+hd0/.
+hd0/documents/file.txt
+```
+
+When booting the operating system from a flash drive, the BIOS emulates instead a floppy disk or a hard disk, so the flash drive can still be accessed using one of the previous identifiers.
 
 ###CLI Built-in commands
 
-####CD
-Change current working directory. One parameter is expected: the new path.
+####CLONE
+Clone the system disk in another disk. The target disk, after being formatted, will be able to boot and will contain a copy of the files in the current system disk. Any previously existing data in the target disk will be lost. One parameter is expected: the target disk identifier.
 
 Example:
 ```
-cd dir
+clone hd0
 ```
 
 ####CLS
 Clear the screen.
 
 ####COPY
-Copy files. Two parameters are expected: the path of the file to copy, and the path where the copy must be created.
+Copy files. Two parameters are expected: the path of the file to copy, and the path of the new copy.
 
 Example:
 ```
-copy rme.txt rmecopy.txt
+copy doc.txt doc-copy.txt
 ```
 
-####DEL
+####DELETE
 Delete a file or a directory. One parameter is expected: the path of the file or directory to delete.
 
 Example:
 ```
-del rme.txt
+delete doc.txt
 ```
 
-####DIR
-View the contents of the current working directory in the file system.
+####HELP
+Show basic help.
 
-####MD
+####INFO
+Show system version and hardware information.
+
+####LIST
+List the contents of a directory. One parameter is expected: the path of the directory to list.
+
+Example:
+```
+list fd0/documents
+```
+
+####MAKEDIR
 Create a new directory. One parameter is expected: the path of the new directory.
 
 Example:
 ```
-md dir
+makedir documents/newdir
 ```
 
-####REN
-Rename a file or a directory. Two parameters are expected: the path of the file or directory to rename, and the new name.
+####MOVE
+Move files. Two parameters are expected: the current path of the file to move, and its new path.
 
 Example:
 ```
-ren /dir/rme.txt readme.txt
+move fd0/doc.txt hd0/documents/doc.txt
 ```
 
-####SYS
-Clone the system disk in another disk. The target disk will be able to boot and will contain a copy of the files in the current system device. Any data in the target drive will be lost. The target disk must have at least 1.44 MB of space. One parameter is expected: the target drive name.
-
-Example:
-```
-sys hd0
-```
-
-####TIME
-Show current date and time.
-
-####TYPE
+####READ
 Display the contents of a file. The path of the file to display is expected as only parameter.
 
 Example:
 ```
-type rme.txt
+read documents/doc.txt
 ```
 
-####XCOPY
-Copy files in different drives. Four parameters are expected: drive name where the file to copy is located, path of the file to copy inside this drive, drive name where the copy must be created, and the path inside this drive where the copy must be created.
-
-Example:
-```
-xcopy fd0 /rme.txt hd0 /readme.txt
-```
-
-
-
-
-See readme.txt for more information.
+####TIME
+Show current date and time.

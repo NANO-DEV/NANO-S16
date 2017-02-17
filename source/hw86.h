@@ -1,77 +1,78 @@
 /*
- * Utilities for x86
+ * Hardware utilities for x86
  */
 
-#ifndef _ARCHX86_H
-#define _ARCHX86_H
+#ifndef _HWx86_H
+#define _HWx86_H
 
 /*
- * Functions defined in utilsx386.s
+ * Functions defined in hw86.s
  */
 
- /*
-  * Dump all regs, serial port
-  */
- extern void dump_regs(void);
 /*
- * Clears the screen for text mode 0
- */
-extern void io_clear_screen(void);
-/*
- * Send a character to the screen in teletype mode
- */
-extern void io_out_char(char c);
-/*
- * Send a character to the serial port
- */
-extern void io_out_char_serial(char c);
-/*
- * Send a character to the screen in specific position
- */
-extern void io_put_char_attr(int x, int y, char c, char color);
-/*
- * Hide the cursor
- */
-extern void io_hide_cursor(void);
-/*
- * Show the cursor
- */
-extern void io_show_cursor(void);
-/*
- * Set the cursor position
- */
-extern void io_set_cursor_pos(int x, int y);
+* Dump all regs, serial port
+*/
+extern void dump_regs();
 /*
  * Set the text mode to 80x25 with 16 colors
  */
-extern void io_set_text_mode(void);
+extern void io_set_text_mode();
 /*
- * Halt the computer
+ * Clears the screen
  */
-extern void halt(void);
+extern void io_clear_screen();
+/*
+ * Send a character to the screen in teletype mode
+ */
+extern void io_out_char(uchar c);
+/*
+ * Send a character to the screen at specific position
+ * with attributes (text and background color)
+ */
+extern void io_out_char_attr(uint x, uint y, uchar c, uchar attr);
+/*
+ * Send a character to the serial port
+ */
+extern void io_out_char_serial(uchar c);
+/*
+ * Hide the cursor
+ */
+extern void io_hide_cursor();
+/*
+ * Show the cursor
+ */
+extern void io_show_cursor();
+/*
+ * Get the cursor position
+ */
+extern void io_get_cursor_pos(uint* x, uint* y);
+/*
+ * Set the cursor position
+ */
+extern void io_set_cursor_pos(uint x, uint y);
 /*
  * Get keystroke
  */
-extern unsigned int io_in_key(void);
+extern uint io_in_key();
 /*
- * Get drive info
+ * Halt the computer
  */
-int get_drive_info(int drive, int* st, int* hd, int* cl);
+extern void halt();
+/*
+ * Get disk hardware info
+ */
+extern uint get_disk_info(uint disk, uint* st, uint* hd, uint* cl);
 /*
  * Read disk sector
  */
-extern int read_disk(int drive, int sector, int n, char* buff );
+extern uint read_disk_sector(uint disk, uint sector, uint n, uchar* buff);
 /*
  * Write disk sector
  */
-extern int write_disk(int drive, int sector, int n, char* buff );
+extern uint write_disk_sector(uint disk, uint sector, uint n, uchar* buff);
 /*
  * Get system time
  */
-extern void kernel_systime(char* BDCtime, char* date);
-/*
- * Kernel system call
- */
-extern void kernel_syscall(int service, void* param, int* result);
+extern void get_time(uchar* BDCtime, uchar* date);
 
-#endif   /* _ARCHX86_H */
+#endif   /* _HWx86_H */
