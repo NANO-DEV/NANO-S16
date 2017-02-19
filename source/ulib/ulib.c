@@ -118,6 +118,19 @@ void sputstr(uchar *format, ...)
 }
 
 /*
+ * Get screen size
+ */
+void get_screen_size(uint* width, uint* height)
+{
+  struct TSYSCALL_POSITION ps;
+  ps.x = 0;
+  ps.y = 0;
+  ps.px = width;
+  ps.py = height;
+  syscall(SYSCALL_IO_GET_SCREEN_SIZE, &ps);
+}
+
+/*
  * Clears the screen
  */
 void clear_screen()
@@ -204,16 +217,14 @@ uint getstr(uchar* str, uint max_count)
 {
   uint i = 0;
 
-  while(i+1 < max_count) {
-    str[i] = getchar();
-    if(str[i] == KEY_LO_RETURN) {
-      str[i] = 0;
+  while(1) {
+    uint c = getchar();
+    if(c == KEY_LO_RETURN) {
       putchar('\n');
       putchar('\r');
       break;
     }
-    if(str[i] == KEY_LO_BACKSPACE) {
-      str[i] = 0;
+    if(c == KEY_LO_BACKSPACE) {
       if(i > 0) {
         i--;
         str[i] = 0;
@@ -221,14 +232,13 @@ uint getstr(uchar* str, uint max_count)
         putchar(0);
         putchar(KEY_LO_BACKSPACE);
       }
-    } else if(str[i]<32 || str[i]>126) {
-      str[i] = 0;
-    } else {
+    } else if(c>=32 && c<=126 && i+1<max_count) {
+      str[i] = c;
       putchar(str[i]);
       i++;
     }
   }
-  str[++i] = 0;
+  str[i] = 0;
 
   return i;
 }
@@ -248,12 +258,13 @@ uint strcpy(uchar *dest, uchar *src)
 }
 
 /*
- * Copy n elements from string src to dest
+ * Copy string src to dest without exceeding
+ * dest_size elements in dest
  */
-uint strncpy(uchar *dest, uchar *src, uint n)
+uint strcpy_s(uchar *dest, uchar *src, uint dest_size)
 {
   uint i = 0;
-  while(src[i]!=0 && i<n) {
+  while(src[i]!=0 && i+1<dest_size) {
     dest[i] = src[i];
     i++;
   }
@@ -269,6 +280,23 @@ uint strcat(uchar *dest, uchar *src)
   uint j = 0;
   uint i = strlen(dest);
   while(src[j] != 0) {
+    dest[i] = src[j];
+    i++;
+    j++;
+  }
+  dest[i] = 0;
+  return i;
+}
+
+/*
+ * Concatenate string src to dest, without exceeding
+ * dest_size elements in dest
+ */
+uint strcat_s(uchar* dest, uchar* src, uint dest_size)
+{
+  uint j = 0;
+  uint i = strlen(dest);
+  while(src[j]!=0 && i+1<dest_size) {
     dest[i] = src[j];
     i++;
     j++;

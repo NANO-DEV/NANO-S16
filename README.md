@@ -17,12 +17,12 @@ System requirements:
 The building process is expected to be executed in a Linux system. In Windows 10 it can be built using Windows Subsystem for Linux.
 
 1. Install required software:
-    * make, gcc, bcc, nasm and ld86 to build the OS and apps
-    * dd to create disk images
+    * make, gcc, bcc, nasm and ld86 to build the OS and user programs
     * optionally install qemu x86 emulator to test the images in a virtual machine
     * optionally install exuberant-ctags to generate tags
+    * optionally use dd to write disk images on storage devices
 
-2. Get full source code tree. In this tree there are several directories:
+2. Get full source code tree. The tree contains the following directories:
     * fstools: disk image generation tool
     * images: output folder for generated disk images
     * source: source code
@@ -30,7 +30,7 @@ The building process is expected to be executed in a Linux system. In Windows 10
         * ulib: library to develop user programs
         * programs: user programs
 
-3. Build: Customize `Makefile` and `source/Makefile` files. Run `make` from the root directory to build everything. Images will be generated in the "images" directory.
+3. Build: Customize `Makefile` and `source/Makefile` files. Run `make` from the root directory to build everything. Images will be generated in the `images` directory.
 
 ##Testing
 After building, run `make qemu` (linux) or `qemu.bat` (windows) from the root directory to test the OS in a virtual machine.

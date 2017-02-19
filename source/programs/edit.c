@@ -16,6 +16,10 @@
 /* editor: white text over blue background */
 #define EDITOR_ATTRIBUTES (AT_T_WHITE|AT_B_BLUE)
 
+/* Screen size */
+static uint SCREEN_WIDTH = 80;
+static uint SCREEN_HEIGHT = 25;
+
 /*
  * Given a string (uchar* line input parameter)
  * returns a pointer to next line or to end of string
@@ -175,7 +179,7 @@ uint main(uint argc, uchar* argv[])
   n = get_entry(&entry, argv[1], UNKNOWN_VALUE, UNKNOWN_VALUE);
 
   /* Load file or show error */
-  if(n!=ERROR_NOT_FOUND && (entry.flags & FST_FILE)) {
+  if(n<ERROR_ANY && (entry.flags & FST_FILE)) {
 
     /* +1 because maybe the file is empty */
     /* or we need to append a 0 at the end */
@@ -207,9 +211,16 @@ uint main(uint argc, uchar* argv[])
   /* This byte is for the final 0 */
   if(buff == 0) {
     buff = malloc(1);
+    if(buff == 0) {
+      putstr("Not enough memory\n\r");
+      return 1;
+    }
     buff_size = 1;
     memset(buff, 0, buff_size);
   }
+
+  /* Get screen size */
+  get_screen_size(&SCREEN_WIDTH, &SCREEN_HEIGHT);
 
   /* Write title */
   for(i=0; i<strlen(argv[1]); i++) {
@@ -240,9 +251,12 @@ uint main(uint argc, uchar* argv[])
 
     /* Key F1: Save */
     if(kh == KEY_HI_F1) {
-      write_file(buff, argv[1], 0, buff_size, FWF_CREATE | FWF_TRUNCATE);
-      putchar_attr(strlen(argv[1]), 0, ' ', TITLE_ATTRIBUTES);
-
+      result = write_file(buff, argv[1], 0, buff_size, FWF_CREATE | FWF_TRUNCATE);
+      if(result < ERROR_ANY) {
+        putchar_attr(strlen(argv[1]), 0, ' ', TITLE_ATTRIBUTES);
+      } else {
+        putchar_attr(strlen(argv[1]), 0, '*', (TITLE_ATTRIBUTES&0xF0)|AT_T_RED);
+      }
 
     /* Cursor keys: Move cursor */
     } else if(kh == KEY_HI_UP) {
@@ -272,42 +286,48 @@ uint main(uint argc, uchar* argv[])
     } else if(kl == KEY_LO_BACKSPACE) {
       if(buff_cursor_offset > 0) {
         uchar* new_buff = malloc(buff_size - 1);
-        memcpy(new_buff, buff, buff_cursor_offset - 1);
-        memcpy(&new_buff[buff_cursor_offset-1], &buff[buff_cursor_offset], buff_size - buff_cursor_offset);
-        mfree(buff);
-        buff_size--;
-        buff = new_buff;
-        putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
-        buff_cursor_offset--;
+        if(new_buff != 0) {
+          memcpy(new_buff, buff, buff_cursor_offset - 1);
+          memcpy(&new_buff[buff_cursor_offset-1], &buff[buff_cursor_offset], buff_size - buff_cursor_offset);
+          mfree(buff);
+          buff_size--;
+          buff = new_buff;
+          putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
+          buff_cursor_offset--;
+        }
       }
 
     /* Del key: delete char at cursor */
     } else if(kh == KEY_HI_DEL) {
       if(buff_cursor_offset < buff_size - 1) {
         uchar* new_buff = malloc(buff_size - 1);
-        memcpy(new_buff, buff, buff_cursor_offset);
-        memcpy(&new_buff[buff_cursor_offset], &buff[buff_cursor_offset+1], buff_size - buff_cursor_offset - 1);
-        mfree(buff);
-        buff_size--;
-        buff = new_buff;
-        putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
+        if(new_buff != 0) {
+          memcpy(new_buff, buff, buff_cursor_offset);
+          memcpy(&new_buff[buff_cursor_offset], &buff[buff_cursor_offset+1], buff_size - buff_cursor_offset - 1);
+          mfree(buff);
+          buff_size--;
+          buff = new_buff;
+          putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
+        }
       }
 
     /* Any other key but esc: insert char at cursor */
     } else if(kl != KEY_LO_ESC) {
       uchar* new_buff = malloc(buff_size + 1);
-      memcpy(new_buff, buff, buff_cursor_offset);
+      if(new_buff != 0) {
+        memcpy(new_buff, buff, buff_cursor_offset);
 
-      if(kl == KEY_LO_RETURN) {
-        kl = '\n';
+        if(kl == KEY_LO_RETURN) {
+          kl = '\n';
+        }
+
+        new_buff[buff_cursor_offset++] = kl;
+        memcpy(&new_buff[buff_cursor_offset], &buff[buff_cursor_offset-1], buff_size + 1 - buff_cursor_offset);
+        mfree(buff);
+        buff_size++;
+        buff = new_buff;
+        putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
       }
-
-      new_buff[buff_cursor_offset++] = kl;
-      memcpy(&new_buff[buff_cursor_offset], &buff[buff_cursor_offset-1], buff_size + 1 - buff_cursor_offset);
-      mfree(buff);
-      buff_size++;
-      buff = new_buff;
-      putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
     }
 
     /* Update cursor position and display */

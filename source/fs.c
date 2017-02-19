@@ -95,6 +95,32 @@ uint32_t blocks_to_MB(uint32_t blocks)
 }
 
 /*
+ * Convert a user input entry name to a valid name.
+ * Bad symbols are removed from input str and lenght
+ * is clamped to SFS_NAMESIZE-1
+ */
+static uchar* string_to_name(uchar* str)
+{
+  uint i=0;
+  for(i=0; i<strlen(str); i++) {
+    if((str[i] < '0' || str[i] > '9') &&
+       (str[i] < 'A' || str[i] > 'Z') &&
+       (str[i] < 'a' || str[i] > 'z') &&
+      str[i] != '.' &&
+      str[i] != '-' && str[i] != '_' &&
+      str[i] != '(' && str[i] != ')' &&
+      str[i] != '[' && str[i] != ']') {
+      str[i] = '_';
+    }
+    if(i == SFS_NAMESIZE-1) {
+      str[i] = 0;
+      break;
+    }
+  }
+  return str;
+}
+
+/*
  * Read disk, specific block, offset and size
  * Returns 0 on success, another value otherwise
  */
@@ -145,6 +171,7 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
   if(n_sectors && result == 0) {
     /* Try to read all sectors at once */
     result = read_disk_sector(disk, sector, n_sectors, &buff[i]);
+
     /* Handle DMA access 64kb boundary. Read sector by sector */
     if(result == 0x900) {
       sputstr("Read disk: DMA access accross 64Kb boundary. Reading sector by sector\n\r");
@@ -275,6 +302,7 @@ uint fs_get_info(uint disk_index, struct FS_INFO* info)
 {
   uint i, j = 0xFFFF, n = 0;
 
+  /* Check parameters */
   if(info == 0) {
     return 1;
   }
@@ -294,7 +322,7 @@ uint fs_get_info(uint disk_index, struct FS_INFO* info)
   /* If found, fill info */
   if(j != 0xFFFF) {
     info->id = index_to_disk(i);
-    strcpy(info->name, disk_to_string(info->id));
+    strcpy_s(info->name, disk_to_string(info->id), sizeof(info->name));
     info->fs_type = disk_info[i].fstype;
     info->fs_size = blocks_to_MB(disk_info[i].fssize);
     info->disk_size = disk_info[i].size;
@@ -350,7 +378,7 @@ static uint path_get_disk(uchar* path)
   /* Make a copy of path because tokenize
    * process will replaces some bytes */
   memset(tokpath, 0, sizeof(tokpath));
-  strcpy(tokpath, path);
+  strcpy_s(tokpath, path, sizeof(tokpath));
   tok = tokpath;
   nexttok = tok;
 
@@ -370,7 +398,7 @@ static uint path_get_disk(uchar* path)
  * Given an entry full path (path), this functions computes disk, parent entry index, and
  * a pointer to the start of the name of the entry in the input path.
  * The parent path must exist, but full path entry can not exist.
- * Return 0 on success, ERROR_NOT_FOUND if parent path does not exist
+ * Return 0 on success, ERROR_NOT_FOUND if parent path does not exist, or another error code
  */
 static uint path_parse_disk_parent_name(uchar** name, uint* parent, uint* disk, uchar* path)
 {
@@ -383,7 +411,7 @@ static uint path_parse_disk_parent_name(uchar** name, uint* parent, uint* disk, 
   /* Make a copy of path because tokenize
    * process will replaces some bytes */
   memset(tokpath, 0, sizeof(tokpath));
-  strcpy(tokpath, path);
+  strcpy_s(tokpath, path, sizeof(tokpath));
   tok = tokpath;
   nexttok = tok;
 
@@ -409,8 +437,8 @@ static uint path_parse_disk_parent_name(uchar** name, uint* parent, uint* disk, 
     /* Check entry exists */
     if(*tok && *nexttok) {
       *parent = fs_get_entry(&entry, tok, *parent, *disk);
-      if(*parent == ERROR_NOT_FOUND) {
-        return ERROR_NOT_FOUND;
+      if(*parent >= ERROR_ANY) {
+        return *parent;
       }
       tok = nexttok;
     }
@@ -421,7 +449,7 @@ static uint path_parse_disk_parent_name(uchar** name, uint* parent, uint* disk, 
 
 /*
  * Get entry by disk and index
- * Returns always the input index. Does check nothing
+ * Returns the input index or ERROR_IO. Does check nothing
  */
 static uint get_entry_n(struct SFS_ENTRY* entry, uint disk, uint n)
 {
@@ -433,9 +461,10 @@ static uint get_entry_n(struct SFS_ENTRY* entry, uint disk, uint n)
     (uint32_t)sizeof(struct SFS_ENTRY)) % (uint32_t)BLOCK_SIZE;
 
   /* Read and return */
-  read_disk(disk, (uint)block, (uint)offset, sizeof(struct SFS_ENTRY), entry);
+  uint result = read_disk(disk, (uint)block, (uint)offset,
+    sizeof(struct SFS_ENTRY), entry);
 
-  return n;
+  return result != 0 ? ERROR_IO : n;
 }
 
 /*
@@ -467,19 +496,24 @@ uint fs_get_entry(struct SFS_ENTRY* entry, uchar* path, uint parent, uint disk)
   if(parent == 0 && strchr(path, PATH_SEPARATOR)) {
     name = path;
     result = path_parse_disk_parent_name(&name, &parent, &disk, path);
-    if(result != ERROR_NOT_FOUND) {
-      path = name;
-    } else {
-      return ERROR_NOT_FOUND;
+    if(result >= ERROR_ANY) {
+      return result;
     }
+    path = name;
   }
 
   /* Read superblock */
-  read_disk(disk, 1, 0, sizeof(sb), &sb);
+  result = read_disk(disk, 1, 0, sizeof(sb), &sb);
+  if(result != 0) {
+    return ERROR_IO;
+  }
 
   /* Check all entries */
   while(n < sb.nentries) {
-    get_entry_n(entry, disk, n);
+    result = get_entry_n(entry, disk, n);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     if((entry->flags & F_USED) && entry->parent == parent &&
       !strcmp(entry->name, path)) {
       return n;
@@ -498,7 +532,7 @@ uint fs_get_entry(struct SFS_ENTRY* entry, uchar* path, uint parent, uint disk)
  * index (nref), this function finds the chained entry (outentry) which
  * contains its nref-th reference.
  * disk id and index of input entry must be also provided.
- * Returns the index of outentry in the entry table, or ERROR_NOT_FOUND
+ * Returns the index of outentry in the entry table, or an error code
  */
 static uint get_nref_entry_from_entry(struct SFS_ENTRY* outentry,
   struct SFS_ENTRY* entry, uint disk, uint nentry, uint nref)
@@ -512,8 +546,9 @@ static uint get_nref_entry_from_entry(struct SFS_ENTRY* outentry,
     if(outentry->next) {
       /* Advance tot he next chained entry */
       result = get_entry_n(outentry, disk, (uint)outentry->next);
-      if(result == ERROR_NOT_FOUND)
-        return ERROR_NOT_FOUND;
+      if(result >= ERROR_ANY) {
+        return result;
+      }
     } else {
       return ERROR_NOT_FOUND;
     }
@@ -528,14 +563,14 @@ uint fs_read_file(uchar* buff, uchar* path, uint offset, uint count)
 {
   struct SFS_ENTRY entry;
   uint nentry;
-  uint result;
+  uint result = 0;
   uint read = 0;
   uint block;
 
   /* Find entry */
   uint disk = path_get_disk(path);
   nentry = fs_get_entry(&entry, path, UNKNOWN_VALUE, UNKNOWN_VALUE);
-  if(nentry != ERROR_NOT_FOUND && (entry.flags & T_FILE)) {
+  if(nentry < ERROR_ANY && (entry.flags & T_FILE)) {
     /* Compute initial block and offset */
     offset = min(offset, entry.size);
     count = min(count, entry.size - offset);
@@ -544,11 +579,18 @@ uint fs_read_file(uchar* buff, uchar* path, uint offset, uint count)
     while(read < count) {
       /* Get chained entry for a given reference index number */
       nentry = get_nref_entry_from_entry(&entry, &entry, disk, nentry, block);
+      if(nentry >= ERROR_ANY) {
+        return nentry;
+      }
       block = block % SFS_ENTRYREFS;
 
       /* Read in buffer */
-      read_disk(disk, (uint)entry.ref[block % SFS_ENTRYREFS], offset,
+      result = read_disk(disk, (uint)entry.ref[block % SFS_ENTRYREFS], offset,
         min(BLOCK_SIZE - offset, count), &(buff[read]), disk);
+
+      if(result != 0) {
+        return ERROR_IO;
+      }
 
       read += min(BLOCK_SIZE - offset, count);
       block++;
@@ -556,7 +598,7 @@ uint fs_read_file(uchar* buff, uchar* path, uint offset, uint count)
     }
     result = read;
   } else {
-    result = ERROR_NOT_FOUND;
+    result = nentry;
   }
   return result;
 }
@@ -564,7 +606,7 @@ uint fs_read_file(uchar* buff, uchar* path, uint offset, uint count)
 /*
  * Write entry by index at disk
  */
-static void write_entry(struct SFS_ENTRY* entry, uint disk, uint n)
+static uint write_entry(struct SFS_ENTRY* entry, uint disk, uint n)
 {
   /* Compute block number and offset */
   uint32_t block = (uint32_t)2 +
@@ -574,13 +616,16 @@ static void write_entry(struct SFS_ENTRY* entry, uint disk, uint n)
     (uint32_t)sizeof(struct SFS_ENTRY)) % (uint32_t)BLOCK_SIZE;
 
   /* Write and return */
-  write_disk(disk, (uint)block, (uint)offset, sizeof(struct SFS_ENTRY), (uchar*)entry);
+  uint result = write_disk(disk, (uint)block, (uint)offset,
+    sizeof(struct SFS_ENTRY), (uchar*)entry);
+
+  return result != 0 ? ERROR_IO : 0;
 }
 
 /*
  * Set entry time to NOW
  */
-static void set_entry_time_to_current(uint disk, uint nentry)
+static uint set_entry_time_to_current(uint disk, uint nentry)
 {
   struct SFS_ENTRY entry;
   struct TIME ctime;
@@ -592,16 +637,24 @@ static void set_entry_time_to_current(uint disk, uint nentry)
 
   /* Set in initial entry and all chained entries */
   do {
-    get_entry_n(&entry, disk, nentry);
+    uint result = get_entry_n(&entry, disk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     entry.time = fstime;
-    write_entry(&entry, disk, nentry);
+    result = write_entry(&entry, disk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     nentry = entry.next;
   } while(nentry != 0);
+
+  return 0;
 }
 
 /*
  * Find first free entry in disk
- * Return its index or ERROR_NOT_FOUND
+ * Return its index or an error code
  */
 static uint find_free_entry(uint disk)
 {
@@ -610,18 +663,24 @@ static uint find_free_entry(uint disk)
   uint n = 0;
 
   /* Read super block */
-  read_disk(disk, 1, 0, sizeof(sb), &sb);
+  uint result = read_disk(disk, 1, 0, sizeof(sb), &sb);
+  if(result != 0) {
+    return ERROR_IO;
+  }
 
   /* Find an unused entry */
   while(n < sb.nentries) {
-    get_entry_n(&entry, disk, n);
+    result = get_entry_n(&entry, disk, n);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     if(!(entry.flags & F_USED)) {
       return n;
     }
     n++;
   }
 
-  return ERROR_NOT_FOUND;
+  return ERROR_NO_SPACE;
 }
 
 /*
@@ -652,7 +711,10 @@ static uint find_free_block(uint disk)
   uint found = 0;
 
   /* Read superblock */
-  read_disk(disk, 1, 0, sizeof(sb), (uchar*)&sb);
+  uint result = read_disk(disk, 1, 0, sizeof(sb), (uchar*)&sb);
+  if(result != 0) {
+    return ERROR_IO;
+  }
 
   /* Compute first data block index */
   first_data_block = 2 +
@@ -666,9 +728,12 @@ static uint find_free_block(uint disk)
     found = 0;
     n = 0;
     while(found == 0 && n < sb.nentries) {
-      get_entry_n(&entry, disk, n);
+      result = get_entry_n(&entry, disk, n);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
       if(entry.flags & T_FILE) {
-        for(b = 0; b < min(needed_blocks((uint)entry.size), SFS_ENTRYREFS); b++) {
+        for(b=0; b<min(needed_blocks((uint)entry.size), SFS_ENTRYREFS); b++) {
           if(entry.ref[b] == free_block) {
             /* If there is, this block is not free */
             found = 1;
@@ -684,7 +749,7 @@ static uint find_free_block(uint disk)
     }
   }
 
-  return ERROR_NOT_FOUND;
+  return ERROR_NO_SPACE;
 }
 
 /*
@@ -697,6 +762,7 @@ static uint find_free_block(uint disk)
 static uint set_entry_refcount(uint disk, uint nentry, uint refcount)
 {
   struct SFS_ENTRY entry;
+  uint result;
   uint i;
 
   /* Compute number of needed entries */
@@ -706,21 +772,36 @@ static uint set_entry_refcount(uint disk, uint nentry, uint refcount)
   }
 
   /* Start from the first one */
-  get_entry_n(&entry, disk, nentry);
+  result = get_entry_n(&entry, disk, nentry);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Advance to the last chained entry, create if needed */
   while(nentries > 0) {
     if(entry.next) {
       nentry = get_entry_n(&entry, disk, (uint)entry.next);
+      if(nentry >= ERROR_ANY) {
+        return nentry;
+      }
     } else {
       entry.next = find_free_entry(disk);
-      write_entry(&entry, disk, nentry);
+      if(entry.next >= ERROR_ANY) {
+        return entry.next;
+      }
+      result = write_entry(&entry, disk, nentry);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
       entry.parent = nentry;
       nentry = entry.next;
       entry.next = 0;
       entry.size = 0;
       memset(entry.ref, 0, sizeof(entry.ref));
-      write_entry(&entry, disk, nentry);
+      result = write_entry(&entry, disk, nentry);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
     }
     nentries--;
   }
@@ -729,35 +810,51 @@ static uint set_entry_refcount(uint disk, uint nentry, uint refcount)
   for(i=refcount%SFS_ENTRYREFS; i<SFS_ENTRYREFS; i++) {
     entry.ref[i] = 0;
   }
-  write_entry(&entry, disk, nentry);
+  result = write_entry(&entry, disk, nentry);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Delete remaining chained entries */
   if(entry.next) {
     uint current = nentry;
     uint next = entry.next;
     entry.next = 0;
-    write_entry(&entry, disk,current);
+    result = write_entry(&entry, disk,current);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     do {
       current = get_entry_n(&entry, disk, next);
+      if(current >= ERROR_ANY) {
+        return current;
+      }
       next = entry.next;
       memset(&entry, 0, sizeof(entry));
-      write_entry(&entry, disk, current);
+      result = write_entry(&entry, disk, current);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
     } while(next);
   }
 
-  return nentry;
+  return 0;
 }
 
 /*
  * Set entry size value, and update also chained entries
  */
-static void set_entry_size(uint disk, uint nentry, uint size)
+static uint set_entry_size(uint disk, uint nentry, uint size)
 {
   struct SFS_ENTRY entry;
+  uint result;
 
   /* Update chain starting from nentry */
   do {
-    get_entry_n(&entry, disk, nentry);
+    result = get_entry_n(&entry, disk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     entry.size = size;
     if(entry.flags & T_FILE) {
       size -= SFS_ENTRYREFS * BLOCK_SIZE;
@@ -765,9 +862,14 @@ static void set_entry_size(uint disk, uint nentry, uint size)
       size -= SFS_ENTRYREFS;
     }
 
-    write_entry(&entry, disk, nentry);
+    result = write_entry(&entry, disk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     nentry = entry.next;
   } while(nentry != 0);
+
+  return 0;
 }
 
 /*
@@ -789,54 +891,79 @@ static uint get_entry_refcount(struct SFS_ENTRY* entry)
  * Add a reference in an entry
  * Advances throguh the chain if needed
  */
-static void add_ref_in_entry(uint disk, uint nentry, uint ref)
+static uint add_ref_in_entry(uint disk, uint nentry, uint ref)
 {
   struct SFS_ENTRY entry;
   struct SFS_ENTRY refentry;
   uint nrefentry = nentry;
   uint refcount;
+  uint result;
 
   /* Get initial entry */
-  get_entry_n(&entry, disk, nentry);
+  result = get_entry_n(&entry, disk, nentry);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Get current number of references */
   refcount = get_entry_refcount(&entry);
 
   /* Get chained entry to add a new one */
   nrefentry = get_nref_entry_from_entry(&refentry, &entry, disk, nrefentry, refcount);
+  if(nrefentry>=ERROR_ANY && nrefentry!=ERROR_NOT_FOUND) {
+    return nrefentry;
+  }
 
   /* Create if does not exist */
   if(nrefentry == ERROR_NOT_FOUND) {
     nrefentry = set_entry_refcount(disk, nentry, refcount + 1);
-    get_entry_n(&refentry, disk, nrefentry);
+    if(nrefentry >= ERROR_ANY) {
+      return nrefentry;
+    }
+    result = get_entry_n(&refentry, disk, nrefentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   }
 
   /* Set the reference */
   refentry.ref[refcount % SFS_ENTRYREFS] = ref;
-  write_entry(&refentry, disk, nrefentry);
+  result = write_entry(&refentry, disk, nrefentry);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Update size if it's a directory */
   if(entry.flags & T_DIR) {
-    set_entry_size(disk, nentry, (uint)entry.size + 1);
+    result = set_entry_size(disk, nentry, (uint)entry.size + 1);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   }
+
+  return 0;
 }
 
 /*
  * Remove a reference in an entry
  * Updates size and chain length if needed
  */
-static void remove_ref_in_entry(uint disk, uint nentry, uint ref)
+static uint remove_ref_in_entry(uint disk, uint nentry, uint ref)
 {
   struct SFS_ENTRY entry;
   struct SFS_ENTRY currentry;
   struct SFS_ENTRY nextentry;
   uint ncurrentry = nentry;
   uint refcount = 0;
+  uint result = 0;
   uint r = 0;
   uchar found = 0;
 
   /* Get initial entry */
-  get_entry_n(&entry, disk, nentry);
+  result = get_entry_n(&entry, disk, nentry);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
   memcpy(&currentry, &entry, sizeof(entry));
   memcpy(&nextentry, &entry, sizeof(entry));
 
@@ -844,16 +971,25 @@ static void remove_ref_in_entry(uint disk, uint nentry, uint ref)
   refcount = get_entry_refcount(&entry);
 
   /* Find value in reference list */
-  for(r = 0; r < refcount; r++) {
+  for(r=0; r<refcount; r++) {
     if(r == SFS_ENTRYREFS) {
-      write_entry(&currentry, disk, ncurrentry);
+      result = write_entry(&currentry, disk, ncurrentry);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
       ncurrentry = get_entry_n(&currentry, disk, (uint)currentry.next);
+      if(ncurrentry >= ERROR_ANY) {
+        return ncurrentry;
+      }
       r = 0;
       refcount = get_entry_refcount(&currentry);
     }
     else if(r + 1 == SFS_ENTRYREFS) {
       if(nextentry.next) {
-        get_entry_n(&nextentry, disk, (uint)nextentry.next);
+        result = get_entry_n(&nextentry, disk, (uint)nextentry.next);
+        if(result >= ERROR_ANY) {
+          return result;
+        }
       } else {
         memset(&nextentry, 0, sizeof(nextentry));
       }
@@ -869,12 +1005,23 @@ static void remove_ref_in_entry(uint disk, uint nentry, uint ref)
 
   /* If found, update */
   if(found) {
-    write_entry(&currentry, disk, ncurrentry);
-    set_entry_refcount(disk, nentry, refcount - 1);
+    result = write_entry(&currentry, disk, ncurrentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
+    result = set_entry_refcount(disk, nentry, refcount - 1);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     if(entry.flags & T_DIR) {
-      set_entry_size(disk, nentry, refcount - 1);
+      result = set_entry_size(disk, nentry, refcount - 1);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
     }
   }
+
+  return 0;
 }
 
 /*
@@ -887,6 +1034,7 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
   struct SFS_ENTRY entry;
   struct SFS_ENTRY tentry;
   uint written;
+  uint result = 0;
 
   /* Find file */
   disk = path_get_disk(path);
@@ -894,33 +1042,47 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
 
   /* Does not exist and should not create or it's a directory: return */
   if((nentry == ERROR_NOT_FOUND && !(flags & WF_CREATE)) ||
-    (nentry != ERROR_NOT_FOUND && (entry.flags & T_DIR))) {
+    (nentry >= ERROR_ANY && nentry != ERROR_NOT_FOUND)) {
+    return nentry;
+  }
+  if(nentry < ERROR_ANY && (entry.flags & T_DIR)) {
     return ERROR_NOT_FOUND;
   }
 
   /* Create file if needed */
   if(nentry == ERROR_NOT_FOUND && (flags & WF_CREATE)) {
-    uint result;
     uint parent = 0;
     memset(&entry, 0, sizeof(entry));
 
     /* Parse parent, disk and name */
     result = path_parse_disk_parent_name(&path, &parent, &disk, path);
-    if(result == ERROR_NOT_FOUND) {
-      return ERROR_NOT_FOUND;
+    if(result >= ERROR_ANY) {
+      return result;
     }
+
+    /* Make name a valid name */
+    path = string_to_name(path);
 
     /* Fill entry data */
     nentry = find_free_entry(disk);
+    if(nentry >= ERROR_ANY) {
+      return nentry;
+    }
     entry.size = 0;
     entry.next = 0;
     entry.parent = parent;
     entry.flags = T_FILE;
-    strcpy(entry.name, path);
-    write_entry(&entry, disk, nentry);
+    strcpy_s(entry.name, path, SFS_NAMESIZE);
+    result = write_entry(&entry, disk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
 
     /* Add reference in parent */
-    add_ref_in_entry(disk, (uint)entry.parent, nentry);
+    result = add_ref_in_entry(disk, (uint)entry.parent, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   }
 
   /* Resize: grow if needed */
@@ -930,31 +1092,64 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
     uint ntentry;
 
     /* Set reference count and size in the chain */
-    set_entry_refcount(disk, nentry, needed_blocks(offset + count));
-    set_entry_size(disk, nentry, offset + count);
+    result = set_entry_refcount(disk, nentry, needed_blocks(offset + count));
+    if(result >= ERROR_ANY) {
+      return result;
+    }
+    result = set_entry_size(disk, nentry, offset + count);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
 
     /* Allocate blocks */
-    get_entry_n(&tentry, disk, nentry);
+    result = get_entry_n(&tentry, disk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     ntentry = nentry;
 
     for(; current_block < final_block; current_block++) {
       while(current_block > SFS_ENTRYREFS) {
-        write_entry(&tentry, disk, ntentry);
+        result = write_entry(&tentry, disk, ntentry);
+        if(result >= ERROR_ANY) {
+          return result;
+        }
         ntentry = get_entry_n(&tentry, disk, (uint)tentry.next);
+        if(ntentry >= ERROR_ANY) {
+          return ntentry;
+        }
         current_block -= SFS_ENTRYREFS;
         final_block -= SFS_ENTRYREFS;
       }
       tentry.ref[current_block] = find_free_block(disk);
+      if(tentry.ref[current_block] >= ERROR_ANY) {
+        return tentry.ref[current_block];
+      }
     }
-    write_entry(&tentry, disk, ntentry);
-    get_entry_n(&entry, disk, nentry);
+    result = write_entry(&tentry, disk, ntentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
+    result = get_entry_n(&entry, disk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   }
 
   /* Resize: shrink if needed */
   if(entry.size > offset + count && (flags & WF_TRUNCATE)) {
-    set_entry_refcount(disk, nentry, needed_blocks(offset + count));
-    set_entry_size(disk, nentry, offset + count);
-    get_entry_n(&entry, disk, nentry);
+    result = set_entry_refcount(disk, nentry, needed_blocks(offset + count));
+    if(result >= ERROR_ANY) {
+      return result;
+    }
+    result = set_entry_size(disk, nentry, offset + count);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
+    result = get_entry_n(&entry, disk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   }
 
   /* Now file has the right size: write data */
@@ -963,18 +1158,27 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
     uint to_copy = min(count, BLOCK_SIZE - (offset % BLOCK_SIZE));
     uint current_block = needed_blocks(offset + to_copy) - 1;
     while(current_block > SFS_ENTRYREFS) {
-      get_entry_n(&entry, disk, (uint)entry.next);
+      result = get_entry_n(&entry, disk, (uint)entry.next);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
       offset -= SFS_ENTRYREFS*BLOCK_SIZE;
       current_block -= SFS_ENTRYREFS;
     }
-    write_disk(disk, (uint)entry.ref[current_block], offset % BLOCK_SIZE, to_copy, &buff[written]);
+    result = write_disk(disk, (uint)entry.ref[current_block], offset % BLOCK_SIZE, to_copy, &buff[written]);
+    if(result != 0) {
+      return result;
+    }
     count -= to_copy;
     offset += to_copy;
     written += to_copy;
   }
 
   /* Update file entry time */
-  set_entry_time_to_current(disk, nentry);
+  result = set_entry_time_to_current(disk, nentry);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   return written;
 }
@@ -986,29 +1190,45 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
 static uint delete_n(uint disk, uint n)
 {
   struct SFS_ENTRY entry;
-  get_entry_n(&entry, disk, n);
+
+  uint result = get_entry_n(&entry, disk, n);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Delete reference in parent */
-  remove_ref_in_entry(disk, (uint)entry.parent, n);
+  result = remove_ref_in_entry(disk, (uint)entry.parent, n);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Recursively delete all files if it's a directory */
   if(entry.flags & T_DIR) {
     uint b = 0;
     while(b < min(entry.size, SFS_ENTRYREFS)) {
-      delete_n(disk, (uint)entry.ref[b]);
+      result = delete_n(disk, (uint)entry.ref[b]);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
       b++;
     }
   }
 
   /* Delete full chain */
   if(entry.next) {
-    delete_n(disk, (uint)entry.next);
+    result = delete_n(disk, (uint)entry.next);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   }
 
   memset(&entry, 0, sizeof(entry));
-  write_entry(&entry, disk, n);
+  result = write_entry(&entry, disk, n);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
-  return n;
+  return 0;
 }
 
 /*
@@ -1023,8 +1243,8 @@ uint fs_delete(uchar* path)
   /* Find entry, and delete by index */
   disk = path_get_disk(path);
   nentry = fs_get_entry(&entry, path, UNKNOWN_VALUE, UNKNOWN_VALUE);
-  if(nentry != ERROR_NOT_FOUND) {
-    delete_n(disk, nentry);
+  if(nentry < ERROR_ANY) {
+    nentry = delete_n(disk, nentry);
   }
 
   return nentry;
@@ -1042,37 +1262,52 @@ uint fs_create_directory(uchar* path)
 
   /* Get disk, parent entry index, and directory name from path */
   uint result = path_parse_disk_parent_name(&path, &parent, &disk, path);
-  if(result == ERROR_NOT_FOUND) {
-    return ERROR_NOT_FOUND;
+  if(result >= ERROR_ANY) {
+    return result;
   }
+
+  /* Make name a valid name */
+  path = string_to_name(path);
 
   /* Check target does not exist */
   result = fs_get_entry(&entry, path, parent, disk);
   if(result != ERROR_NOT_FOUND) {
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     return ERROR_EXISTS;
   }
 
   /* Find a free entry index */
   nentry = find_free_entry(disk);
-  if(nentry == ERROR_NOT_FOUND) {
-    return ERROR_NOT_FOUND;
+  if(nentry >= ERROR_ANY) {
+    return nentry;
   }
 
   /* Create entry */
   memset(&entry, 0, sizeof(entry));
-  strcpy(entry.name, path);
+  strcpy_s(entry.name, path, SFS_NAMESIZE);
   entry.size = 0;
   entry.flags = T_DIR;
   entry.parent = parent;
   entry.next = 0;
-  write_entry(&entry, disk, nentry);
+  result = write_entry(&entry, disk, nentry);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Update modified time */
-  set_entry_time_to_current(disk, nentry);
+  result = set_entry_time_to_current(disk, nentry);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Add reference in parent */
   if(nentry != entry.parent) {
-    add_ref_in_entry(disk, (uint)entry.parent, nentry);
+    result = add_ref_in_entry(disk, (uint)entry.parent, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   }
 
   return nentry;
@@ -1093,39 +1328,60 @@ uint fs_move(uchar* srcpath, uchar* dstpath)
 
   /* Get disk, parent entry index, and name from destination path */
   result = path_parse_disk_parent_name(&dstname, &dst_parent, &dstdisk, dstpath);
-  if(result == ERROR_NOT_FOUND) {
-    return ERROR_NOT_FOUND;
+  if(result >= ERROR_ANY) {
+    return result;
   }
+
+  /* Make name a valid name */
+  dstname = string_to_name(dstname);
 
   /* Check destination does not exist */
   result = fs_get_entry(&entry, dstname, dst_parent, dstdisk);
   if(result != ERROR_NOT_FOUND) {
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     return ERROR_EXISTS;
   }
 
   /* Check source exists */
   srcdisk = path_get_disk(srcpath);
   nentry = fs_get_entry(&entry, srcpath, UNKNOWN_VALUE, UNKNOWN_VALUE);
-  if(nentry == ERROR_NOT_FOUND) {
-    return ERROR_NOT_FOUND;
+  if(nentry >= ERROR_ANY) {
+    return nentry;
   }
 
   /* If moving between disks, physically move data: copy and delete */
   if(srcdisk != dstdisk) {
-    fs_copy(srcpath, dstpath);
-    delete_n(srcdisk, nentry);
+    result = fs_copy(srcpath, dstpath);
+    if(result != 0) {
+      return result;
+    }
+    result = delete_n(srcdisk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   } else {
     /* Else, remove reference in parent */
-    remove_ref_in_entry(srcdisk, (uint)entry.parent, nentry);
+    result = remove_ref_in_entry(srcdisk, (uint)entry.parent, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
 
     /* Update entry parent and name */
     memset(entry.name, 0, sizeof(entry.name));
-    strcpy(entry.name, dstname);
+    strcpy_s(entry.name, dstname, SFS_NAMESIZE);
     entry.parent = dst_parent;
-    write_entry(&entry, dstdisk, nentry);
+    result = write_entry(&entry, dstdisk, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
 
     /* Add reference in parent */
-    add_ref_in_entry(dstdisk, (uint)entry.parent, nentry);
+    result = add_ref_in_entry(dstdisk, (uint)entry.parent, nentry);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
   }
 
   return nentry;
@@ -1146,21 +1402,27 @@ uint fs_copy(uchar* srcpath, uchar* dstpath)
 
   /* Get disk, parent entry index, and name from destination path */
   result = path_parse_disk_parent_name(&dstname, &dst_parent, &dst_disk, dstpath);
-  if(result == ERROR_NOT_FOUND) {
-    return ERROR_NOT_FOUND;
+  if(result >= ERROR_ANY) {
+    return result;
   }
+
+  /* Make name a valid name */
+  dstname = string_to_name(dstname);
 
   /* Check destination does not exist */
   result = fs_get_entry(&entry, dstname, dst_parent, dst_disk);
   if(result != ERROR_NOT_FOUND) {
+    if(result >= ERROR_ANY) {
+      return result;
+    }
     return ERROR_EXISTS;
   }
 
   /* Check source exists */
   src_disk = path_get_disk(srcpath);
   nentry = fs_get_entry(&entry, srcpath, UNKNOWN_VALUE, UNKNOWN_VALUE);
-  if(nentry == ERROR_NOT_FOUND) {
-    return ERROR_NOT_FOUND;
+  if(nentry >= ERROR_ANY) {
+    return nentry;
   }
 
   /* If source is a file, just read and write the full file */
@@ -1170,10 +1432,13 @@ uint fs_copy(uchar* srcpath, uchar* dstpath)
     uchar buff[BLOCK_SIZE];
 
     while(copied = fs_read_file(buff, srcpath, offset, sizeof(buff))) {
-      if(copied == ERROR_NOT_FOUND) {
-        break;
+      if(copied >= ERROR_ANY) {
+        return copied;
       }
-      fs_write_file(buff, dstpath, offset, copied, WF_CREATE);
+      result = fs_write_file(buff, dstpath, offset, copied, WF_CREATE);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
       offset += copied;
     }
     return 0;
@@ -1183,30 +1448,39 @@ uint fs_copy(uchar* srcpath, uchar* dstpath)
     uint r = 0;
 
     /* Create the directory */
-    fs_create_directory(dstpath);
+    result = fs_create_directory(dstpath);
+    if(result >= ERROR_ANY) {
+      return result;
+    }
 
     /* Iterate and recursively copy entries */
-    while(r < entry.size) {
+    for(r=0; r<entry.size; r++) {
       struct SFS_ENTRY tentry;
-      uchar src_path[128];
-      uchar dst_path[128];
-      get_entry_n(&tentry, src_disk, (uint)entry.ref[r]);
+      uchar src_path[64];
+      uchar dst_path[64];
+      result = get_entry_n(&tentry, src_disk, (uint)entry.ref[r]);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
 
       /* Compute src and dest paths, and move */
-      strcpy(src_path, srcpath);
-      strcat(src_path, PATH_SEPARATOR_S);
-      strcat(src_path, tentry.name);
+      strcpy_s(src_path, srcpath, sizeof(src_path));
+      strcat_s(src_path, PATH_SEPARATOR_S, sizeof(src_path));
+      strcat_s(src_path, tentry.name, sizeof(src_path));
 
-      strcpy(dst_path, dstpath);
-      strcat(dst_path, PATH_SEPARATOR_S);
-      strcat(dst_path, tentry.name);
+      strcpy_s(dst_path, dstpath, sizeof(src_path));
+      strcat_s(dst_path, PATH_SEPARATOR_S, sizeof(dst_path));
+      strcat_s(dst_path, tentry.name, sizeof(dst_path));
 
-      fs_copy(src_path, dst_path);
+      result = fs_copy(src_path, dst_path);
+      if(result >= ERROR_ANY) {
+        return result;
+      }
     }
     return 0;
   }
 
-  return nentry;
+  return ERROR_NOT_FOUND;
 }
 
 /*
@@ -1222,17 +1496,23 @@ uint fs_list(struct SFS_ENTRY* entry, uchar* path, uint n)
   disk = path_get_disk(path);
   memset(entry, 0, sizeof(struct SFS_ENTRY));
   nentry = fs_get_entry(&direntry, path, UNKNOWN_VALUE, UNKNOWN_VALUE);
+  if(nentry >= ERROR_ANY) {
+    return nentry;
+  }
 
   /* If found, and it's a directory */
-  if(nentry != ERROR_NOT_FOUND && (direntry.flags & T_DIR)) {
+  if(direntry.flags & T_DIR) {
     if(n < (uint)direntry.size) {
        /* Advance to the chained entry contaning the nth reference */
       uint res = get_nref_entry_from_entry(&direntry, &direntry, disk, nentry, n);
-      if(res == ERROR_NOT_FOUND) {
-        return ERROR_NOT_FOUND;
+      if(res >= ERROR_ANY) {
+        return res;
       }
       /* Get the entry */
-      get_entry_n(entry, disk, (uint)direntry.ref[n]);
+      res = get_entry_n(entry, disk, (uint)direntry.ref[n]);
+      if(res >= ERROR_ANY) {
+        return res;
+      }
     }
     return (uint)direntry.size;
   }
@@ -1259,8 +1539,15 @@ uint fs_format(uint disk)
   sputstr("format disk: %x (system_disk=%x)\n\r", disk, system_disk);
 
   /* Copy boot block from system disk to target disk */
-  read_disk(system_disk, 0, 0, BLOCK_SIZE, buff);
-  write_disk(disk, 0, 0, BLOCK_SIZE, buff);
+  result = read_disk(system_disk, 0, 0, BLOCK_SIZE, buff);
+  if(result != 0) {
+    return ERROR_IO;
+  }
+
+  result = write_disk(disk, 0, 0, BLOCK_SIZE, buff);
+  if(result != 0) {
+    return ERROR_IO;
+  }
 
   /* Create superblock */
   disk_size = (uint32_t)disk_info[disk_index].sectors *
@@ -1281,42 +1568,59 @@ uint fs_format(uint disk)
     (uint32_t)(((sb->size * (uint32_t)BLOCK_SIZE)/(uint32_t)10)/(uint32_t)sizeof(struct SFS_ENTRY)),
     (uint32_t)1024);
   sb->bootstart = (uint32_t)2 + (sb->nentries * (uint32_t)sizeof(struct SFS_ENTRY)) / (uint32_t)BLOCK_SIZE;
-  write_disk(disk, 1, 0, BLOCK_SIZE, sb);
-  read_disk(disk, 1, 0, BLOCK_SIZE, sb);
-  sputstr("%x blocks=%U entries=%U boot=%U\n\r", disk, sb->size, sb->nentries, sb->bootstart);
+  result = write_disk(disk, 1, 0, BLOCK_SIZE, sb);
+  if(result != 0) {
+    return ERROR_IO;
+  }
+  sputstr("format: %x blocks=%U entries=%U boot=%U\n\r", disk, sb->size, sb->nentries, sb->bootstart);
 
   nentries = (uint)sb->nentries;
 
   /* Create root dir */
   memset(buff, 0, sizeof(buff));
   entry = (struct SFS_ENTRY*)buff;
-  strcpy(entry->name, ROOT_DIR_NAME);
+  strcpy_s(entry->name, ROOT_DIR_NAME, SFS_NAMESIZE);
   entry->flags = T_DIR;
   entry->size = 0;
   entry->parent = 0;
   entry->next = 0;
   entry->time = 0;
-  write_entry(entry, disk, 0);
-  set_entry_time_to_current(disk, 0);
-  get_entry_n(entry, disk, 0);
 
+  result = write_entry(entry, disk, 0);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
+
+  result = set_entry_time_to_current(disk, 0);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
+
+  /* Write empty entries table */
   memset(buff, 0, sizeof(buff));
   for(e=1; e<nentries; e++) {
     write_entry(entry, disk, e);
   }
 
   /* Copy boot program */
-  get_entry_n(entry, system_disk, 1);
-  strcpy(k_src_path, disk_to_string(system_disk));
-  strcat(k_src_path, PATH_SEPARATOR_S);
-  strcat(k_src_path, entry->name);
-  strcpy(k_dst_path, disk_to_string(disk));
-  strcat(k_dst_path, PATH_SEPARATOR_S);
-  strcat(k_dst_path, entry->name);
+  result = get_entry_n(entry, system_disk, 1);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
+
+  strcpy_s(k_src_path, disk_to_string(system_disk), sizeof(k_src_path));
+  strcat_s(k_src_path, PATH_SEPARATOR_S, sizeof(k_src_path));
+  strcat_s(k_src_path, entry->name, sizeof(k_src_path));
+  strcpy_s(k_dst_path, disk_to_string(disk), sizeof(k_dst_path));
+  strcat_s(k_dst_path, PATH_SEPARATOR_S, sizeof(k_dst_path));
+  strcat_s(k_dst_path, entry->name, sizeof(k_dst_path));
 
   sputstr("format: copy %s %s\n\r", k_src_path, k_dst_path);
 
   result = fs_copy(k_src_path, k_dst_path);
+  if(result >= ERROR_ANY) {
+    return result;
+  }
 
   /* Update disks file system information */
   fs_init_info();

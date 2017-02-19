@@ -10,11 +10,11 @@
  */
 
 /*
-* Dump all regs, serial port
+* Dump all register values to serial port
 */
 extern void dump_regs();
 /*
- * Set the text mode to 80x25 with 16 colors
+ * Set the VGA text mode to 80x25 with 16 colors
  */
 extern void io_set_text_mode();
 /*

@@ -41,9 +41,17 @@ extern _sputstr
 global _io_set_text_mode
 _io_set_text_mode:
   push ax
+  push bx
+
   mov  al, 0x03
   mov  ah, 0x00
   int  0x10
+
+  mov  ax, 0x1112       ; Use this to set 80x50 video mode
+  mov  bl, 0
+  int  0x10
+
+  pop  bx
   pop  ax
   ret
 
@@ -65,12 +73,16 @@ _io_clear_screen:
   mov  al, 0            ; Normal white on black
   mov  bh, 0x07         ; scolor
   mov  cx, 0            ; Top-left
-  mov  dh, 24           ; Bottom-right
-  mov  dl, 79
+  mov  dh, [_screen_height] ; Bottom-right
+  sub  dh, 1
+  mov  dl, [_screen_width]
+  sub  dl, 1
   int  10h
 
   popa
   ret
+
+extern _screen_width, _screen_height
 
 
 ;
@@ -312,6 +324,11 @@ _read_disk_sector:
   call set_disk_params
   mov  ax, [bx+20]      ; Ax = start logical sector
 
+  cmp  byte [dsects], 0
+  je   .param_failure
+  cmp  byte [dsides], 0
+  je   .param_failure
+
   call disk_lba_to_hts
 
   mov  ah, 2            ; Params for int 13h: read disk sectors
@@ -320,6 +337,8 @@ _read_disk_sector:
   mov  bx, ds
   mov  es, bx
   mov  bx, si
+
+  mov  word [.n], 0
 
   pusha                 ; Prepare to enter loop
 
@@ -353,6 +372,11 @@ _read_disk_sector:
   mov  ax, [.n]         ; Return 1 (for failure)
   ret
 
+.param_failure:
+  popa
+  mov  ax, 1
+  ret
+
 .n dw 0
 
 
@@ -369,6 +393,11 @@ _write_disk_sector:
   mov  [tdev], al
   call set_disk_params
   mov  ax, [bx+20]      ; Ax = start logical sector
+
+  cmp  byte [dsects], 0
+  je   .param_failure
+  cmp  byte [dsides], 0
+  je   .param_failure
 
   call disk_lba_to_hts
 
@@ -392,6 +421,11 @@ _write_disk_sector:
   mov  [.n], ax
   popa
   mov  ax, [.n]         ; Return error code
+  ret
+
+.param_failure:
+  popa
+  mov  ax, 1
   ret
 
 .n dw 0

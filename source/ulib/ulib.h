@@ -91,14 +91,13 @@ void sputstr(uchar* format, ...);
 #define AT_B_WHITE    0xF0
 
 /*
- * Video mode screen size
+ * Get video mode screen size
  *
  * Screen positions are referred as x,y in this library.
- * x: column in screen. From 0 (leftmost) to SCREEN_WIDTH
- * y: line in screen. From 0 (topmost) to SCREEN_HEIGHT
+ * x: column in screen. From 0 (leftmost) to width-1
+ * y: line in screen. From 0 (topmost) to height-1
  */
-#define SCREEN_WIDTH  80
-#define SCREEN_HEIGHT 25
+void get_screen_size(uint* width, uint* height);
 
 /*
  * Clears the screen
@@ -207,14 +206,21 @@ uint getstr(uchar* str, uint max_count);
 uint strcpy(uchar* dest, uchar* src);
 
 /*
- * Copy n elements from string src to dest
+ * Copy string src to dest without exceeding
+ * dest_size elements in dest
  */
-uint strncpy(uchar* dest, uchar* src, uint n);
+uint strcpy_s(uchar* dest, uchar* src, uint dest_size);
 
 /*
  * Concatenate string src to dest
  */
 uint strcat(uchar* dest, uchar* src);
+
+/*
+ * Concatenate string src to dest, without exceeding
+ * dest_size elements in dest
+ */
+uint strcat_s(uchar* dest, uchar* src, uint dest_size);
 
 /*
  * Get string length
@@ -310,9 +316,12 @@ void mfree(void* ptr);
   * hd1 : 0x81
   */
 
-/* Special return codes */
+/* Special error codes */
 #define ERROR_NOT_FOUND 0xFFFF
 #define ERROR_EXISTS    0xFFFE
+#define ERROR_IO        0xFFFD
+#define ERROR_NO_SPACE  0xFFFC
+#define ERROR_ANY       0xFFFB
 
 /* FS_ENTRY flags */
 #define FST_DIR  0x01   /* Directory */

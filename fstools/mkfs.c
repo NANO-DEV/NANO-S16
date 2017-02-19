@@ -49,9 +49,9 @@ int main(int argc, char *argv[])
          sizeof(struct SFS_ENTRY) % BLOCK_SIZE == 0);
 
   // Check usage
-  if(argc < 3) {
+  if(argc < 5) {
     fprintf(stderr,
-      "Usage: %s output_file fs_size_blocks kernel_file [other_files ...]\n",
+      "Usage: %s output_file fs_size_blocks boot_sect kernel_file [other_files ...]\n",
       argv[0]);
 
     exit(1);
@@ -69,10 +69,17 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  // Write empty boot block, with boot signature
+  // Create empty boot block
   memset(buf, 0, sizeof(buf));
-  buf[510] = 0xAA;
-  buf[511] = 0x55;
+
+  // Now add boot image to the block
+  if((fd = open(argv[3], 0)) < 0) {
+    perror(argv[3]);
+    exit(1);
+  }
+
+  read(fd, buf, 512);
+  close(fd);
   wblock(0, buf);
 
   // Write all image with 0s
@@ -99,10 +106,10 @@ int main(int argc, char *argv[])
   b = sfs_sb.bootstart;
 
   // Create root dir
-  strcpy(sfs_entry[e].name, ROOT_DIR_NAME);
+  strncpy(sfs_entry[e].name, ROOT_DIR_NAME, SFS_NAMESIZE-1);
   sfs_entry[e].flags = T_DIR;
   sfs_entry[e].time = 0;
-  sfs_entry[e].size = argc - 3;
+  sfs_entry[e].size = argc - 4;
   sfs_entry[e].parent = 0;
   sfs_entry[e].next = 0;
 
@@ -110,7 +117,7 @@ int main(int argc, char *argv[])
 
   // Copy input files to image
   // The first one is expected to be the kernel
-  for(f = 3; f < argc; f++) {
+  for(f = 4; f < argc; f++) {
 
     // Open file
     if((fd = open(argv[f], 0)) < 0) {
@@ -127,7 +134,7 @@ int main(int argc, char *argv[])
     }
 
     // Create first file entry
-    sfs_entry[0].ref[f - 3] = e;
+    sfs_entry[0].ref[f - 4] = e;
 
     strncpy(sfs_entry[e].name, name, SFS_NAMESIZE-1);
     sfs_entry[e].flags = T_FILE;

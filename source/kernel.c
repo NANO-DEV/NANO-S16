@@ -11,6 +11,9 @@
 
 uchar serial_status;  /* Serial port status */
 
+uint screen_width  = 80; /* Screen size (text mode) */
+uint screen_height = 50;
+
 /*
  * Disk related
  */
@@ -127,6 +130,13 @@ uint kernel_service(uint service, void* param)
 {
   switch(service) {
 
+    case SYSCALL_IO_GET_SCREEN_SIZE: {
+      struct TSYSCALL_POSITION* ps = param;
+      *(ps->px) = screen_width;
+      *(ps->py) = screen_height;
+      return 0;
+    }
+
     case SYSCALL_IO_CLEAR_SCREEN:
       io_clear_screen();
       return 0;
@@ -181,7 +191,7 @@ uint kernel_service(uint service, void* param)
       struct TSYSCALL_FSENTRY* fi = param;
       struct SFS_ENTRY entry;
       uint result = fs_get_entry(&entry, fi->path, fi->parent, fi->disk);
-      strcpy(fi->entry->name, entry.name);
+      strcpy_s(fi->entry->name, entry.name, sizeof(fi->entry->name));
       fi->entry->flags = entry.flags;
       fi->entry->size = entry.size;
       return result;
@@ -219,7 +229,7 @@ uint kernel_service(uint service, void* param)
       struct TSYSCALL_FSLIST* fi = param;
       struct SFS_ENTRY entry;
       uint result = fs_list(&entry, fi->path, fi->n);
-      strcpy(fi->entry->name, entry.name);
+      strcpy_s(fi->entry->name, entry.name, sizeof(fi->entry->name));
       fi->entry->flags = entry.flags;
       fi->entry->size = entry.size;
       return result;
@@ -263,24 +273,26 @@ void kernel()
 
   /* Setup disk identifiers */
   disk_info[0].id = 0x00; /* Floppy disk 0 */
-  strcpy(disk_info[0].name, "fd0");
+  strcpy_s(disk_info[0].name, "fd0", sizeof(disk_info[0].name));
 
   disk_info[1].id = 0x01; /* Floppy disk 1 */
-  strcpy(disk_info[1].name, "fd1");
+  strcpy_s(disk_info[1].name, "fd1", sizeof(disk_info[1].name));
 
   disk_info[2].id = 0x80;   /* Hard disk 0 */
-  strcpy(disk_info[2].name, "hd0");
+  strcpy_s(disk_info[2].name, "hd0", sizeof(disk_info[2].name));
 
   disk_info[3].id = 0x81;   /* Hard disk 1 */
-  strcpy(disk_info[3].name, "hd1");
+  strcpy_s(disk_info[3].name, "hd1", sizeof(disk_info[3].name));
 
   /* Initialize hardware related disks info */
   for(i=0; i<MAX_DISK; i++) {
     n = index_to_disk(i);
 
+    /* Try to get info */
     result = get_disk_info(n, &disk_info[i].sectors,
       &disk_info[i].sides, &disk_info[i].cylinders);
 
+    /* Use retrieved data if success */
     if(result == 0) {
       disk_info[i].size = ((uint32_t)disk_info[i].sectors *
         (uint32_t)disk_info[i].sides * (uint32_t)disk_info[i].cylinders) /
@@ -291,6 +303,7 @@ void kernel()
         disk_info[i].cylinders);
 
     } else {
+      /* Failed. Do not use this disk */
       disk_info[i].sectors = 0;
       disk_info[i].sides = 0;
       disk_info[i].cylinders = 0;
@@ -362,48 +375,57 @@ void kernel()
 
         /* Get number of entries in target dir */
         n = fs_list(&entry, argv[1], 0);
-        if(n == ERROR_NOT_FOUND) {
+        if(n >= ERROR_ANY) {
           putstr("path not found\n\r");
           continue;
         }
 
-        /* Print one by one */
-        for(i=0; i<n; i++) {
-          struct TIME etime;
-          uint c, size;
+        if(n > 0) {
+          putstr("\n\r");
 
-          /* Get entry */
-          fs_list(&entry, argv[1], i);
-          memset(line, 0, sizeof(line));
+          /* Print one by one */
+          for(i=0; i<n; i++) {
+            struct TIME etime;
+            uint c, size;
 
-          /* Listed entry is a dir? If so,
-           * start this line with a '+' */
-          strcpy(line, entry.flags & T_DIR ? "+ " : "  ");
-          strcat(line, entry.name); /* Append name */
+            /* Get entry */
+            result = fs_list(&entry, argv[1], i);
+            if(result >= ERROR_ANY) {
+              putstr("Error\n\r");
+              break;
+            }
 
-          /* We want size to be right-aligned so add spaces
-           * depending on figures of entry size */
-          for(c=strlen(line); c<22; c++) {
-            line[c] = ' ';
+            /* Listed entry is a dir? If so,
+             * start this line with a '+' */
+            memset(line, 0, sizeof(line));
+            strcpy_s(line, entry.flags & T_DIR ? "+ " : "  ", sizeof(line));
+            strcat_s(line, entry.name, sizeof(line)); /* Append name */
+
+            /* We want size to be right-aligned so add spaces
+             * depending on figures of entry size */
+            for(c=strlen(line); c<22; c++) {
+              line[c] = ' ';
+            }
+            size = entry.size;
+            while(size = size / 10 ) {
+              line[--c] = 0;
+            }
+
+            /* Print name and size */
+            putstr("%s%u %s   ", line, (uint)entry.size,
+              (entry.flags & T_DIR) ? "items" : "bytes");
+
+            /* Print date */
+            fs_fstime_to_systime(entry.time, &etime);
+            putstr("%d/%s%d/%s%d %s%d:%s%d:%s%d\n\r",
+              etime.year,
+              etime.month <10?"0":"", etime.month,
+              etime.day   <10?"0":"", etime.day,
+              etime.hour  <10?"0":"", etime.hour,
+              etime.minute<10?"0":"", etime.minute,
+              etime.second<10?"0":"", etime.second);
           }
-          size = entry.size;
-          while(size = size / 10 ) {
-            line[--c] = 0;
-          }
-
-          /* Print name and size */
-          putstr("%s%u %s   ", line, (uint)entry.size,
-            (entry.flags & T_DIR) ? "items" : "bytes");
-
-          /* Print date */
-          fs_fstime_to_systime(entry.time, &etime);
-          putstr("%d/%s%d/%s%d %s%d:%s%d:%s%d\n\r",
-            etime.year,
-            etime.month <10?"0":"", etime.month,
-            etime.day   <10?"0":"", etime.day,
-            etime.hour  <10?"0":"", etime.hour,
-            etime.minute<10?"0":"", etime.minute,
-            etime.second<10?"0":"", etime.second);
+          putstr("\n\r");
         }
       } else {
         putstr("usage: list <path>\n\r");
@@ -413,8 +435,14 @@ void kernel()
       /* Makedir command */
       if(argc == 2) {
         result = fs_create_directory(argv[1]);
-        if(result == ERROR_NOT_FOUND || result == ERROR_EXISTS) {
-          putstr("error: failed to create directory\n\r");
+        if(result == ERROR_NOT_FOUND) {
+          putstr("error: path not found\n\r");
+        } else if(result == ERROR_EXISTS) {
+          putstr("error: destination already exists\n\r");
+        } else if(result == ERROR_NO_SPACE) {
+          putstr("error: can't allocate destination in filesystem\n\r");
+        } else if(result >= ERROR_ANY) {
+          putstr("error: coludn't create directory\n\r");
         }
       } else {
         putstr("usage: makedir <path>\n\r");
@@ -424,7 +452,7 @@ void kernel()
       /* Delete command */
       if(argc == 2) {
         result = fs_delete(argv[1]);
-        if(result == ERROR_NOT_FOUND) {
+        if(result >= ERROR_ANY) {
           putstr("error: failed to delete\n\r");
         }
       } else {
@@ -439,6 +467,10 @@ void kernel()
           putstr("error: path not found\n\r");
         } else if(result == ERROR_EXISTS) {
           putstr("error: destination already exists\n\r");
+        } else if(result == ERROR_NO_SPACE) {
+          putstr("error: can't allocate destination in filesystem\n\r");
+        } else if(result >= ERROR_ANY) {
+          putstr("error: coludn't move files\n\r");
         }
       } else {
         putstr("usage: move <path> <newpath>\n\r");
@@ -452,6 +484,10 @@ void kernel()
           putstr("error: path not found\n\r");
         } else if(result == ERROR_EXISTS) {
           putstr("error: destination already exists\n\r");
+        } else if(result == ERROR_NO_SPACE) {
+          putstr("error: can't allocate destination in filesystem\n\r");
+        } else if(result >= ERROR_ANY) {
+          putstr("error: coludn't copy files\n\r");
         }
       } else {
         putstr("usage: copy <srcpath> <dstpath>\n\r");
@@ -460,7 +496,7 @@ void kernel()
       /* Info command: show system info */
       if(argc == 1) {
         putstr("\n\r");
-        putstr("NANO S16 [Version 2.0 build 4]\n\r");
+        putstr("NANO S16 [Version 2.0 build 5]\n\r");
         putstr("\n\r");
 
         putstr("Disks:\n\r");
@@ -468,10 +504,9 @@ void kernel()
         for(i=0; i<MAX_DISK; i++) {
           n = index_to_disk(i);
           if(disk_info[i].size) {
-            putstr("%s %s(%UMB) HW(%x size=%UMB sectors=%d sides=%d cylinders=%d)\n\r",
+            putstr("%s %s(%UMB)   Disk size: %UMB\n\r",
               disk_to_string(n), disk_info[i].fstype == FS_TYPE_NSFS ? "NSFS" : "UNKN",
-              (uint32_t)blocks_to_MB(disk_info[i].fssize), n, disk_info[i].size, disk_info[i].sectors,
-              disk_info[i].sides, disk_info[i].cylinders);
+              (uint32_t)blocks_to_MB(disk_info[i].fssize), disk_info[i].size);
           }
         }
         putstr("\n\r");
@@ -541,26 +576,33 @@ void kernel()
         putstr("Copying user files...\n\r");
 
         n = fs_list(&entry, ROOT_DIR_NAME, 0);
-        if(n != ERROR_NOT_FOUND) {
-          for(i=1; i<n; i++) {
-            uchar dst[64];
-            fs_list(&entry, ROOT_DIR_NAME, i);
+        if(n >= ERROR_ANY) {
+          putstr("Error creating file list\n\r");
+          continue;
+        }
 
-            strcpy(dst, argv[1]);
-            strcat(dst, PATH_SEPARATOR_S);
-            strcat(dst, entry.name);
+        for(i=1; i<n; i++) {
+          uchar dst[64];
+          result = fs_list(&entry, ROOT_DIR_NAME, i);
+          if(result >= ERROR_ANY) {
+            putstr("Error copying files. Aborted\n\r");
+            break;
+          }
 
-            sputstr("copy %s %s\n\r", entry.name, dst);
-            result = fs_copy(entry.name, dst);
-            if(result == ERROR_NOT_FOUND || result == ERROR_EXISTS) {
-              putstr("Error copying files. Aborted\n\r");
-              continue;
-            }
+          strcpy_s(dst, argv[1], sizeof(dst));
+          strcat_s(dst, PATH_SEPARATOR_S, sizeof(dst));
+          strcat_s(dst, entry.name, sizeof(dst));
+
+          sputstr("copy %s %s\n\r", entry.name, dst);
+          result = fs_copy(entry.name, dst);
+          if(result >= ERROR_ANY) {
+            putstr("Error copying files. Aborted\n\r");
+            break;
           }
         }
 
         /* Notify result */
-        if(result!=ERROR_NOT_FOUND && result!=ERROR_EXISTS) {
+        if(result < ERROR_ANY) {
           putstr("Operation completed\n\r");
         }
       } else {
@@ -575,6 +617,10 @@ void kernel()
         memset(buff, 0, sizeof(buff));
         /* While it can read the file, print it */
         while(result = fs_read_file(buff, argv[1], offset, sizeof(buff))) {
+          if(result >= ERROR_ANY) {
+            putstr("\n\rThere was an error reading input file\n\r");
+            break;
+          }
           for(i=0; i<result; i++) {
             putchar(buff[i]);
             /* Add '\r' after '\n' chars */
@@ -596,7 +642,7 @@ void kernel()
         struct TIME ctime;
         time(&ctime);
 
-        putstr("%d/%s%d/%s%d %s%d:%s%d:%s%d\n\r",
+        putstr("\n\r%d/%s%d/%s%d %s%d:%s%d:%s%d\n\r\n\r",
           ctime.year,
           ctime.month <10?"0":"", ctime.month,
           ctime.day   <10?"0":"", ctime.day,
@@ -606,7 +652,7 @@ void kernel()
       } else if(argc == 3 && /* Easter egg */
         strcmp(argv[1], "of") == 0 &&
         strcmp(argv[2], "love") == 0) {
-        putstr("2000/04/30 17:00:00\n\r");
+        putstr("\n\r2000/04/30 17:00:00\n\r\n\r");
       } else {
         putstr("usage error\n\r");
       }
@@ -631,6 +677,7 @@ void kernel()
         putstr("\n\r");
       } else if(argc == 2 &&  /* Easter egg */
         (strcmp(argv[1], "huri") == 0 || strcmp(argv[1], "marylin") == 0)) {
+        putstr("\n\r");
         putstr("                                     _,-/\\^---,      \n\r");
         putstr("             ;\"~~~~~~~~\";          _/;; ~~  {0 `---v \n\r");
         putstr("           ;\" :::::   :: \"\\_     _/   ;;     ~ _../  \n\r");
@@ -643,6 +690,7 @@ void kernel()
         putstr("    ;:;{::~~~~~~=              \\__~~~=               \n\r");
         putstr(" ;~~:;  ~~~~~~~~~               ~~~~~~               \n\r");
         putstr(" \\/~~                                               \n\r");
+        putstr("\n\r");
       } else {
         putstr("usage: help\n\r");
       }
@@ -653,16 +701,17 @@ void kernel()
 
       struct SFS_ENTRY entry;
       uchar prog_file_name[32];
-      strcpy(prog_file_name, argv[0]);
+      strcpy_s(prog_file_name, argv[0], sizeof(prog_file_name));
 
       /* Append .bin if there is not a '.' in the name*/
-      if(!strchr(prog_file_name, '.')) {
+      if(!strchr(prog_file_name, '.') &&
+        strlen(prog_file_name) < 28) {
         strcat(prog_file_name, ".bin");
       }
 
       /* Find .bin file */
       result = fs_get_entry(&entry, prog_file_name, UNKNOWN_VALUE, UNKNOWN_VALUE);
-      if(result != ERROR_NOT_FOUND) {
+      if(result < ERROR_ANY) {
         /* Found */
         if(entry.flags & T_FILE) {
           /* It's a file: load it */
@@ -674,7 +723,7 @@ void kernel()
         }
       }
 
-      if(result == ERROR_NOT_FOUND || result == 0) {
+      if(result >= ERROR_ANY || result == 0) {
         putstr("unkown command\n\r");
       } else {
         extern_main* m = EXTERN_PROGRAM_MEMLOC;

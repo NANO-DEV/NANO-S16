@@ -8,7 +8,8 @@
 /*
  * System call service codes
  */
-#define SYSCALL_IO_CLEAR_SCREEN         0x0000
+#define SYSCALL_IO_GET_SCREEN_SIZE      0x0000
+#define SYSCALL_IO_CLEAR_SCREEN         0x0001
 #define SYSCALL_IO_OUT_CHAR             0x0010
 #define SYSCALL_IO_OUT_CHAR_ATTR        0x0011
 #define SYSCALL_IO_OUT_CHAR_SERIAL      0x0018

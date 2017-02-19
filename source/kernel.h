@@ -29,4 +29,7 @@ extern struct DISKINFO disk_info[MAX_DISK]; /* Disks info */
 extern uchar system_disk;  /* System disk */
 extern uchar serial_status;  /* Serial port status */
 
+extern uint screen_width;
+extern uint screen_height;
+
 #endif   /* _KERNEL_H */
