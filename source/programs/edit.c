@@ -58,14 +58,12 @@ static uchar* next_line(uint mode, uint screen_y, uchar* line)
 
 /*
  * Shows buffer in editor area starting at a given
- * number of line of buffer
+ * number of line of buffer.
+ * It's recommended to hide cursor before calling this function
  */
 void show_buffer_at_line(uchar* buff, uint n)
 {
   uint l = 0;
-
-  /* Hide cursor while drawing */
-  set_cursor_position(0xFFFF, 0xFFFF);
 
   /* Skip buffer until required line number */
   while(l<n && *buff) {
@@ -235,8 +233,10 @@ uint main(uint argc, uchar* argv[])
   }
 
   /* Show buffer and set cursor at start */
+  set_show_cursor(HIDE_CURSOR);
   show_buffer_at_line(buff, current_line);
   set_cursor_position(0, 1);
+  set_show_cursor(SHOW_CURSOR);
 
   /* Main loop */
   while(kl != KEY_LO_ESC) {
@@ -337,10 +337,12 @@ uint main(uint argc, uchar* argv[])
     } else if(line > current_line + SCREEN_HEIGHT - 2) {
       current_line = line - SCREEN_HEIGHT + 2;
     }
+    set_show_cursor(HIDE_CURSOR);
     show_buffer_at_line(buff, current_line);
     line -= current_line;
     line += 1;
     set_cursor_position(col, line);
+    set_show_cursor(SHOW_CURSOR);
   }
 
   /* Free buffer */

@@ -17,7 +17,7 @@ System requirements:
 The building process is expected to be executed in a Linux system. In Windows 10 it can be built using Windows Subsystem for Linux.
 
 1. Install required software:
-    * make, gcc, bcc, nasm and ld86 to build the OS and user programs
+    * make, gcc, bcc, nasm and ld86 to build the operating system and user programs
     * optionally install qemu x86 emulator to test the images in a virtual machine
     * optionally install exuberant-ctags to generate tags
     * optionally use dd to write disk images on storage devices
@@ -33,9 +33,17 @@ The building process is expected to be executed in a Linux system. In Windows 10
 3. Build: Customize `Makefile` and `source/Makefile` files. Run `make` from the root directory to build everything. Images will be generated in the `images` directory.
 
 ##Testing
-After building, run `make qemu` (linux) or `qemu.bat` (windows) from the root directory to test the OS in a virtual machine.
+After building, run `make qemu` (linux) or `qemu.bat` (windows) from the root directory to test the operating system in qemu. Other virtual machines have been successfully tested. To test the system using VirtualBox, create a new `Other/DOS` machine and start it with `images/os_fd.img` as floppy image.
 
-The system can operate real hardware if images are written to physical disks.
+If debug mode is activated in the operating system configuration, it will output debug information through the first serial port in real time. This can be useful for system and user application developers. This serial port is configured to work at 2400 bauds, 8 data bits, odd parity and 1 stop bit.
+
+Using the provided qemu scripts, the serial port will be automatically mapped to the process standard input/output. For VirtualBox users, it is possible for example to telnet from putty if COM1 is set to TCP mode without a pipe, and the same port if specified in both programs.
+
+The system can operate real hardware if images are written to physical disks. Writing images to disks to test them in real hardware is dangerous and can cause loss of data or boot damage, among other undesired things, in all involved computers. So, it is not recommended to proceed unless this risk is understood and assumed. To write images to physical disks, `dd` can be used in linux:
+```
+dd status=noxfer conv=notrunc if=images/os-fd.img of=/dev/sdb status=none
+```
+Replace `/dev/sdb` with the actual target storage device. Usually `root` privileges will be needed to run this command.
 
 ##User manual
 A system disk is needed to start the OS for first time. See later sections for information about how to install (clone system) once it is running.
@@ -76,6 +84,15 @@ clone hd0
 ####CLS
 Clear the screen.
 
+####CONFIG
+Show or set configuration parameter values. To show current values, call it without arguments. To set values, two parameters are expected: the parameter name to set, and its value.
+
+Example:
+```
+config
+config debug enabled
+```
+
 ####COPY
 Copy files. Two parameters are expected: the path of the file to copy, and the path of the new copy.
 
@@ -99,7 +116,7 @@ Show basic help.
 Show system version and hardware information.
 
 ####LIST
-List the contents of a directory. One parameter is expected: the path of the directory to list.
+List the contents of a directory. One parameter is expected: the path of the directory to list. If this parameter is omitted, the contents of the system disk root directory will be listed.
 
 Example:
 ```
@@ -132,3 +149,37 @@ read documents/doc.txt
 
 ####TIME
 Show current date and time.
+
+
+##User programs development
+
+The easiest way to develop new user programs is:
+
+1. Setup the development system so it contains a copy of the full source tree and it's able to build and test it. See the building and testing pages.
+
+2. Create a new `programname.c` file in `source/programs` folder with this code:
+
+```
+ /*
+  * User program: programname
+  */
+
+ #include "types.h"
+ #include "ulib/ulib.h"
+
+ uint main(uint argc, uchar* argv[])
+ {
+   return 0;
+ }
+ ```
+
+3. Edit this line of `source/Makefile` and add `$(PROGDIR)programname.bin` at the end, like this:
+```
+programs: $(PROGDIR)edit.bin $(PROGDIR)programname.bin
+```
+4. Edit this line of `Makefile` and add `$(SOURCEDIR)programs/programname.bin` at the end, like this:
+```
+USERFILES := $(SOURCEDIR)programs/edit.bin $(SOURCEDIR)programs/programname.bin
+```
+5. Add code to `programname.c`. See all available system functions in `ulib/ulib.h`
+6. Build and test

@@ -134,12 +134,12 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
 
   /* Check params */
   if(buff == 0) {
-    sputstr("Read disk: bad buffer\n\r");
+    debugstr("Read disk: bad buffer\n\r");
     return 1;
   }
 
   if(disk_info[disk_to_index(disk)].size == 0) {
-    sputstr("Read disk: bad disk\n\r");
+    debugstr("Read disk: bad disk\n\r");
     return 1;
   }
 
@@ -174,7 +174,7 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
 
     /* Handle DMA access 64kb boundary. Read sector by sector */
     if(result == 0x900) {
-      sputstr("Read disk: DMA access accross 64Kb boundary. Reading sector by sector\n\r");
+      debugstr("Read disk: DMA access accross 64Kb boundary. Reading sector by sector\n\r");
       for(; n_sectors > 0; n_sectors--) {
         result = read_disk_sector(disk, sector, 1, aux_buff);
         if(result != 0) {
@@ -201,7 +201,7 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
   }
 
   if(result != 0) {
-    sputstr("Read disk error (%x)\n\r", result);
+    debugstr("Read disk error (%x)\n\r", result);
   }
 
   return result;
@@ -221,12 +221,12 @@ static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar
 
   /* Check params */
   if(buff == 0) {
-    sputstr("Write disk: bad buffer\n\r");
+    debugstr("Write disk: bad buffer\n\r");
     return 1;
   }
 
   if(disk_info[disk_to_index(disk)].size == 0) {
-    sputstr("Write disk: bad disk\n\r");
+    debugstr("Write disk: bad disk\n\r");
     return 1;
   }
 
@@ -261,7 +261,7 @@ static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar
     result += write_disk_sector(disk, sector, n_sectors, &buff[i]);
     /* Handle DMA access 64kb boundary. Write sector by sector */
     if(result == 0x900) {
-      sputstr("Write disk: DMA access accross 64Kb boundary. Writting sector by sector\n\r");
+      debugstr("Write disk: DMA access accross 64Kb boundary. Writting sector by sector\n\r");
       for(; n_sectors > 0; n_sectors--) {
         memcpy(aux_buff, &buff[i], SECTOR_SIZE);
         result = write_disk_sector(disk, sector, 1, aux_buff);
@@ -289,7 +289,7 @@ static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar
   }
 
   if(result != 0) {
-    sputstr("Write disk error (%x)\n\r", result);
+    debugstr("Write disk error (%x)\n\r", result);
   }
 
   return result;
@@ -342,7 +342,7 @@ void fs_init_info()
 
   /* For each disk */
   for(disk_index=0; disk_index<MAX_DISK; disk_index++) {
-    sputstr("Check filesystem in %x: ", index_to_disk(disk_index));
+    debugstr("Check filesystem in %x: ", index_to_disk(disk_index));
 
     /* If hardware related disk info is valid */
     if(disk_info[disk_index].size != 0) {
@@ -353,7 +353,7 @@ void fs_init_info()
         if(sb.type == SFS_TYPE_ID) {
           disk_info[disk_index].fstype = FS_TYPE_NSFS;
           disk_info[disk_index].fssize = sb.size;
-          sputstr("NSFS\n\r");
+          debugstr("NSFS\n\r");
           continue;
         }
       }
@@ -362,7 +362,7 @@ void fs_init_info()
       disk_info[disk_index].fstype = FS_TYPE_UNKNOWN;
       disk_info[disk_index].fssize = 0;
     }
-    sputstr("unknown\n\r");
+    debugstr("unknown\n\r");
   }
 }
 
@@ -1536,7 +1536,7 @@ uint fs_format(uint disk)
   uint32_t disk_size;
   uint disk_index = disk_to_index(disk);
 
-  sputstr("format disk: %x (system_disk=%x)\n\r", disk, system_disk);
+  debugstr("format disk: %x (system_disk=%x)\n\r", disk, system_disk);
 
   /* Copy boot block from system disk to target disk */
   result = read_disk(system_disk, 0, 0, BLOCK_SIZE, buff);
@@ -1572,7 +1572,7 @@ uint fs_format(uint disk)
   if(result != 0) {
     return ERROR_IO;
   }
-  sputstr("format: %x blocks=%U entries=%U boot=%U\n\r", disk, sb->size, sb->nentries, sb->bootstart);
+  debugstr("format: %x blocks=%U entries=%U boot=%U\n\r", disk, sb->size, sb->nentries, sb->bootstart);
 
   nentries = (uint)sb->nentries;
 
@@ -1615,7 +1615,7 @@ uint fs_format(uint disk)
   strcat_s(k_dst_path, PATH_SEPARATOR_S, sizeof(k_dst_path));
   strcat_s(k_dst_path, entry->name, sizeof(k_dst_path));
 
-  sputstr("format: copy %s %s\n\r", k_src_path, k_dst_path);
+  debugstr("format: copy %s %s\n\r", k_src_path, k_dst_path);
 
   result = fs_copy(k_src_path, k_dst_path);
   if(result >= ERROR_ANY) {

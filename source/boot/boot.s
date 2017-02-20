@@ -36,27 +36,25 @@ start:
   mov  eax, 0
   mov  ax, 1
 
+  mov  bx, (STAGE_LOC>>4)
+  mov  es, bx
+
 .read_next:
   push ax
   call disk_lba_to_hts
 
-  mov  bx, 0
-  mov  es, bx
   mov  bx, [BUFFER]
 
   mov  ah, 2
   mov  al, 1
 
-  pusha                 ; Prepare to enter loop
+  pusha
 
 .read_loop:
-  push es
-  pop  es
-
   popa
   pusha
 
-  stc                   ; A few BIOSes do not set properly on error
+  stc                   ; Some BIOSes do not set properly on error
   int  13h              ; Read sectors
 
   jnc  .read_finished
@@ -72,9 +70,9 @@ start:
   cmp  ax, 1
   jne  .inc_loop        ; If it was the super block
   mov  bx, [BUFFER]
-  mov  ax, [bx+12]
+  mov  ax, [es:bx+12]
   mov  bx, ax
-  add  bx, 64
+  add  bx, 72
   mov  [LASTBLOCK], bx
   jmp  .read_next       ; find where the bootable image starts
 .inc_loop:
@@ -131,7 +129,7 @@ disk_lba_to_hts:
 
 SECTORS   dw 18
 SIDES     dw 2
-BUFFER    dw STAGE_LOC
+BUFFER    dw 0
 LASTBLOCK dw 240
 
 error:

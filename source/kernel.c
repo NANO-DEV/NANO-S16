@@ -10,6 +10,7 @@
 #include "fs.h"
 
 uchar serial_status;  /* Serial port status */
+uint serial_debug = 0; /* Debug info through serial port */
 
 uint screen_width  = 80; /* Screen size (text mode) */
 uint screen_height = 50;
@@ -89,7 +90,7 @@ static void* heap_alloc(uint size)
   }
 
   /* Error: not found */
-  sputstr("Mem alloc: BAD ALLOC (%d bytes)\n\r", size);
+  debugstr("Mem alloc: BAD ALLOC (%d bytes)\n\r", size);
   return 0;
 }
 
@@ -142,7 +143,7 @@ uint kernel_service(uint service, void* param)
       return 0;
 
     case SYSCALL_IO_OUT_CHAR:
-      io_out_char((uchar)param);
+      io_out_char((uchar)*param);
       return 0;
 
     case SYSCALL_IO_OUT_CHAR_ATTR: {
@@ -153,12 +154,7 @@ uint kernel_service(uint service, void* param)
 
     case SYSCALL_IO_SET_CURSOR_POS: {
       struct TSYSCALL_POSITION* ps = param;
-      if(ps->x == 0xFFFF || ps->y == 0xFFFF) {
-        io_hide_cursor();
-      } else {
-        io_set_cursor_pos(ps->x, ps->y);
-        io_show_cursor();
-      }
+      io_set_cursor_pos(ps->x, ps->y);
       return 0;
     }
 
@@ -168,12 +164,31 @@ uint kernel_service(uint service, void* param)
       return 0;
     }
 
-    case SYSCALL_IO_OUT_CHAR_SERIAL:
-      io_out_char_serial((uchar)param);
+    case SYSCALL_IO_SET_SHOW_CURSOR: {
+      uint mode = (uint)*param;
+      if(mode == HIDE_CURSOR) {
+        io_hide_cursor();
+      } else {
+        io_show_cursor();
+      }
       return 0;
+    }
 
     case SYSCALL_IO_IN_KEY:
       return io_in_key();
+
+    case SYSCALL_IO_OUT_CHAR_SERIAL:
+      io_out_char_serial((uchar)*param);
+      return 0;
+
+    case SYSCALL_IO_IN_CHAR_SERIAL:
+      return (uint)io_in_char_serial();
+
+    case SYSCALL_IO_OUT_CHAR_DEBUG:
+      if(serial_debug) {
+        io_out_char_serial((uchar)*param);
+      }
+      return 0;
 
     case SYSCALL_MEM_ALLOCATE:
       return heap_alloc((uint)*param);
@@ -236,7 +251,7 @@ uint kernel_service(uint service, void* param)
     }
 
     case SYSCALL_FS_FORMAT:
-      return fs_format((uint)param);
+      return fs_format((uint)*param);
 
     case SYSCALL_CLK_GET_TIME: {
       struct TIME* t = param;
@@ -298,7 +313,7 @@ void kernel()
         (uint32_t)disk_info[i].sides * (uint32_t)disk_info[i].cylinders) /
         ((uint32_t)1048576 / (uint32_t)BLOCK_SIZE);
 
-      sputstr("DISK (%x : size=%U MB sect_per_track=%d, sides=%d, cylinders=%d)\n\r",
+      debugstr("DISK (%x : size=%U MB sect_per_track=%d, sides=%d, cylinders=%d)\n\r",
         n, disk_info[i].size, disk_info[i].sectors, disk_info[i].sides,
         disk_info[i].cylinders);
 
@@ -318,7 +333,7 @@ void kernel()
   fs_init_info();
 
   putstr("Starting...\n\r");
-  sputstr("Starting...\n\r");
+  debugstr("Starting...\n\r");
 
   /* Integrated CLI */
   while(1) {
@@ -334,7 +349,7 @@ void kernel()
     /* Prompt and wait command */
     putstr("> ");
     getstr(str, sizeof(str));
-    sputstr("> %s\n\r", str);
+    debugstr("> %s\n\r", str);
 
     /* Tokenize */
     argc = 0;
@@ -496,7 +511,7 @@ void kernel()
       /* Info command: show system info */
       if(argc == 1) {
         putstr("\n\r");
-        putstr("NANO S16 [Version 2.0 build 5]\n\r");
+        putstr("NANO S16 [Version 2.0 build 6]\n\r");
         putstr("\n\r");
 
         putstr("Disks:\n\r");
@@ -581,7 +596,8 @@ void kernel()
           continue;
         }
 
-        for(i=1; i<n; i++) {
+        /* List entries */
+        for(i=0; i<n; i++) {
           uchar dst[64];
           result = fs_list(&entry, ROOT_DIR_NAME, i);
           if(result >= ERROR_ANY) {
@@ -593,10 +609,12 @@ void kernel()
           strcat_s(dst, PATH_SEPARATOR_S, sizeof(dst));
           strcat_s(dst, entry.name, sizeof(dst));
 
-          sputstr("copy %s %s\n\r", entry.name, dst);
+          debugstr("copy %s %s\n\r", entry.name, dst);
           result = fs_copy(entry.name, dst);
-          if(result >= ERROR_ANY) {
-            putstr("Error copying files. Aborted\n\r");
+          /* Skip ERROR_EXISTS errors, because system files were copied
+           * by fs_format function, so they are expected to fail */
+          if(result >= ERROR_ANY && result != ERROR_EXISTS) {
+            putstr("Error copying %s. Aborted\n\r", entry.name);
             break;
           }
         }
@@ -654,7 +672,26 @@ void kernel()
         strcmp(argv[2], "love") == 0) {
         putstr("\n\r2000/04/30 17:00:00\n\r\n\r");
       } else {
-        putstr("usage error\n\r");
+        putstr("usage: time\n\r");
+      }
+
+    } else if(strcmp(argv[0], "config") == 0) {
+      /* Time command: Show date and time */
+      if(argc == 1) {
+        putstr("\n\r");
+        putstr("debug: %s       - output debug info through serial port\n\r", serial_debug ? " enabled" : "disabled");
+        putstr("\n\r");
+      } else if(argc == 3 && /* Easter egg */
+        strcmp(argv[1], "debug") == 0) {
+          if(strcmp(argv[2], "enabled") == 0) {
+            serial_debug = 1;
+          } else if(strcmp(argv[2], "disabled") == 0) {
+            serial_debug = 0;
+          } else {
+            putstr("Invalid value. Valid values are: enabled, disabled\n\r");
+          }
+      } else {
+        putstr("usages:\n\rconfig\n\rconfig <debug> <enabled|disabled>");
       }
 
     } else if(strcmp(argv[0], "help") == 0) {
@@ -665,6 +702,7 @@ void kernel()
         putstr("\n\r");
         putstr("clone    - clone system in another disk\n\r");
         putstr("cls      - clear the screen\n\r");
+        putstr("config   - show or set config\n\r");
         putstr("copy     - create a copy of a file or directory\n\r");
         putstr("delete   - delete entry\n\r");
         putstr("help     - show this help\n\r");
@@ -734,11 +772,14 @@ void kernel()
           continue;
         }
 
-        sputstr("CLI: Running program %s (%d bytes)\n\r",
+        debugstr("CLI: Running program %s (%d bytes)\n\r",
           prog_file_name, (uint)entry.size);
 
         /* Run program */
         m(argc, argv);
+
+        /* Restore environment */
+        set_show_cursor(SHOW_CURSOR); /* The program could have hidden it */
       }
     }
   }
