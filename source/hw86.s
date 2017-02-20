@@ -152,11 +152,11 @@ _io_out_char_serial:
 
   test byte [_serial_status], 0x80
   jne  .skip
-  mov  dx, 0
+  mov  dx, 0            ; Port number
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+8]       ; Get char from string
-  mov  ah, 01h          ; int 14h n
-  int  0x14             ; Print it
+  mov  ah, 01h          ; int 14h ah=01h: write
+  int  0x14             ; Send it
 
   mov byte [_serial_status], ah
 
@@ -164,6 +164,33 @@ _io_out_char_serial:
   pop  dx
   pop  ax
   pop  bx
+  ret
+
+;
+; uchar io_in_char_serial();
+; Read a char from serial port
+;
+global  _io_in_char_serial
+_io_in_char_serial:
+  push dx
+  push ax
+
+  test byte [_serial_status], 0x80
+  jne  .skip
+  mov  dx, 0            ; Port number
+  mov  al, 0
+  mov  ah, 02h          ; int 14h ah=02h: read
+  int  0x14             ; Get it
+
+  ;mov byte [_serial_status], ah
+  test byte ah, 0x80
+  mov  ah, 0
+  je   .skip
+  mov  ax, 0
+
+.skip:
+  pop  dx
+  pop  dx
   ret
 
 extern _serial_status

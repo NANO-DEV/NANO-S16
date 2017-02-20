@@ -28,6 +28,7 @@ struct DISKINFO {
 extern struct DISKINFO disk_info[MAX_DISK]; /* Disks info */
 extern uchar system_disk;  /* System disk */
 extern uchar serial_status;  /* Serial port status */
+extern uint serial_debug; /* Debug info through serial port */
 
 extern uint screen_width;
 extern uint screen_height;

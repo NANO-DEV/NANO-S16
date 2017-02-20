@@ -37,6 +37,18 @@ uchar getLO(uint c);
  * - New line is defined as "\n\r"
  */
 
+ /*
+  * Send a character to the debug output
+  */
+ void debugchar(uchar c);
+
+/*
+ * Send a complex string on the debug output
+ * Supports:
+ * %d (int), %u (uint), %x (uint), %s (char*) and %U (uint32_t)
+ */
+void debugstr(uchar* format, ...);
+
 
 /*
  * Send a character to the serial port
@@ -49,6 +61,12 @@ void sputchar(uchar c);
  * %d (int), %u (uint), %x (uint), %s (char*) and %U (uint32_t)
  */
 void sputstr(uchar* format, ...);
+
+/*
+ * Get char from serial port. Blocking function with time-out.
+ * Returns 0 on timeout
+ */
+uchar sgetchar();
 
 
 /*
@@ -129,10 +147,19 @@ void putstr(uchar* format, ...);
  * Get cursor position
  */
 void get_cursor_position(uint* x, uint* y);
+
 /*
  * Set cursor position
  */
 void set_cursor_position(uint x, uint y);
+
+/*
+ * Set cursor visibility
+ * modes: HIDE_CURSOR, SHOW_CURSOR
+ */
+#define HIDE_CURSOR 0
+#define SHOW_CURSOR 1
+void set_show_cursor(uint mode);
 
 
 /*
