@@ -106,7 +106,7 @@ void format_str_outchar(uchar *format, uint* args, outchar_function outchar)
  */
 void sputchar(uchar c)
 {
-  syscall(SYSCALL_IO_OUT_CHAR_SERIAL, (void*)c);
+  syscall(SYSCALL_IO_OUT_CHAR_SERIAL, (void*)&c);
 }
 
 /*
@@ -115,6 +115,30 @@ void sputchar(uchar c)
 void sputstr(uchar *format, ...)
 {
   format_str_outchar(format, &format + 1, sputchar);
+}
+
+/*
+ * Get char from serial port
+ */
+uchar sgetchar()
+{
+  return (uchar)syscall(SYSCALL_IO_IN_CHAR_SERIAL, 0);
+}
+
+/*
+ * Send a character to the debug output
+ */
+void debugchar(uchar c)
+{
+  syscall(SYSCALL_IO_OUT_CHAR_DEBUG, (void*)&c);
+}
+
+/*
+ * Send a complex string on the debug output
+ */
+void debugstr(uchar *format, ...)
+{
+  format_str_outchar(format, &format + 1, debugchar);
 }
 
 /*
@@ -143,7 +167,7 @@ void clear_screen()
  */
 void putchar(uchar c)
 {
-  syscall(SYSCALL_IO_OUT_CHAR, (void*)c);
+  syscall(SYSCALL_IO_OUT_CHAR, (void*)&c);
 }
 
 /*
@@ -191,6 +215,14 @@ void set_cursor_position(uint x, uint y)
   ps.px = 0;
   ps.py = 0;
   syscall(SYSCALL_IO_SET_CURSOR_POS, &ps);
+}
+
+/*
+ * Set cursor visibility
+ */
+void set_show_cursor(uint mode)
+{
+  syscall(SYSCALL_IO_SET_SHOW_CURSOR, &mode);
 }
 
 /*
@@ -530,7 +562,7 @@ uint list(struct FS_ENTRY* entry, uchar* path, uint n)
  */
 uint format(uint disk)
 {
-  return syscall(SYSCALL_FS_FORMAT, disk);
+  return syscall(SYSCALL_FS_FORMAT, &disk);
 }
 
 /*

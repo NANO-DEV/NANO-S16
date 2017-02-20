@@ -32,7 +32,7 @@ _main:
   ; Init serial port
   mov  dx, 0
   mov  ah, 0
-  mov  al, 10101011b
+  mov  al, 10101011b          ; 2400 baud, 8 data bits, odd parity, 1 stop bit
   int  0x14
   mov  [_serial_status], ah
 

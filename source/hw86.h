@@ -35,6 +35,10 @@ extern void io_out_char_attr(uint x, uint y, uchar c, uchar attr);
  */
 extern void io_out_char_serial(uchar c);
 /*
+ * Read a character from the serial port
+ */
+extern uchar io_in_char_serial();
+/*
  * Hide the cursor
  */
 extern void io_hide_cursor();
