@@ -6,7 +6,7 @@ SOURCEDIR := source/
 FSTOOLSDIR := fstools/
 
 # User files and args for mkfs
-USERFILES := $(SOURCEDIR)programs/edit.bin
+USERFILES := $(SOURCEDIR)programs/edit.bin $(SOURCEDIR)programs/hello.bin
 MKFSARGS := $(SOURCEDIR)boot/boot.bin $(SOURCEDIR)kernel.n16 $(USERFILES)
 
 # Make source and create images

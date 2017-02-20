@@ -15,7 +15,7 @@ NFLAGS  := -w+orphan-labels -f as86 # generate as86 object file
 
 all: $(BOOTDIR)boot.bin kernel.n16 programs
 
-programs: $(PROGDIR)edit.bin
+programs: $(PROGDIR)edit.bin $(PROGDIR)hello.bin
 
 $(PROGDIR)%.bin: $(PROGDIR)%.c $(ULIBDIR)ulib.o $(ULIBDIR)x86.o
 	$(CC86) $(CFLAGS) -o $(PROGDIR)$*.o -c $(PROGDIR)$*.c
