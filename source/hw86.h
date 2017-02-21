@@ -78,5 +78,13 @@ extern uint write_disk_sector(uint disk, uint sector, uint n, uchar* buff);
  * Get system time
  */
 extern void get_time(uchar* BDCtime, uchar* date);
+/*
+ * Set extended memory byte
+ */
+extern void exmem_setbyte(ex_ptr addr, uchar b);
+/*
+ * Get extended memory byte
+ */
+extern uchar exmem_getbyte(ex_ptr addr);
 
 #endif   /* _HWx86_H */

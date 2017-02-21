@@ -34,7 +34,7 @@ extern _sputstr
 
 
 ;
-; void io_set_text_mode();
+; void io_set_text_mode()
 ; Set the text mode to 80x25 16 colors
 ; and cursor shape to blinking
 ;
@@ -86,7 +86,7 @@ extern _screen_width, _screen_height
 
 
 ;
-; void io_out_char(uchar c);
+; void io_out_char(uchar c)
 ; Write a char to display in teletype mode
 ; Parameters are passed on the stack
 global  _io_out_char
@@ -105,7 +105,7 @@ _io_out_char:
 
 
 ;
-; void io_out_char_attr(uint x, uint y, uchar c, uchar color);
+; void io_out_char_attr(uint x, uint y, uchar c, uchar color)
 ; Write a char to display in specific position
 ;
 global  _io_out_char_attr
@@ -141,7 +141,7 @@ _io_out_char_attr:
 
 
 ;
-; void io_out_char_serial(uchar c);
+; void io_out_char_serial(uchar c)
 ; Write a char to serial port
 ;
 global  _io_out_char_serial
@@ -167,7 +167,7 @@ _io_out_char_serial:
   ret
 
 ;
-; uchar io_in_char_serial();
+; uchar io_in_char_serial()
 ; Read a char from serial port
 ;
 global  _io_in_char_serial
@@ -196,7 +196,7 @@ _io_in_char_serial:
 extern _serial_status
 
 ;
-; void io_hide_cursor();
+; void io_hide_cursor()
 ; Hide the cursor in text mode using BIOS
 ;
 global  _io_hide_cursor
@@ -212,7 +212,7 @@ _io_hide_cursor:
 
 
 ;
-; void io_show_cursor();
+; void io_show_cursor()
 ; Show the cursor in text mode using BIOS
 ;
 ;
@@ -231,7 +231,7 @@ _io_show_cursor:
 
 
 ;
-; void io_get_cursor_position(uint* x, uint* y);
+; void io_get_cursor_position(uint* x, uint* y)
 ; Get the cursor position
 ;
 ;
@@ -258,7 +258,7 @@ _io_get_cursor_pos:
 
 
 ;
-; void io_set_cursor_position(uint x, uint y);
+; void io_set_cursor_position(uint x, uint y)
 ; Set the cursor position
 ;
 ;
@@ -548,7 +548,7 @@ extern _disk_info
 
 
 ;
-; uint get_disk_info(uint disk, uint* st, uint* hd, , uint* cl);
+; uint get_disk_info(uint disk, uint* st, uint* hd, , uint* cl)
 ;
 ;
 global _get_disk_info
@@ -609,6 +609,70 @@ _get_disk_info:
 
 dsects dw 0             ; Current disk sectors per track
 dsides dw 0             ; Current disk sides
+
+
+;
+; void exmem_setbyte(ex_ptr addr, uchar b)
+; Set extended memory byte
+;
+global _exmem_setbyte
+_exmem_setbyte:
+  cli
+  push es
+  push cx
+  push bx
+  push ax
+
+  mov  bx, sp           ; Save the stack pointer
+  mov  cx, [bx+12]
+  sal  cx, 8
+  cmp  cx, 0
+  je   .same_segment
+  mov  es, cx
+.same_segment:
+  mov  cx, [bx+10]
+  mov  al, [bx+14]
+  mov  bx, cx
+
+  mov  [es:bx], al
+
+  pop  ax
+  pop  bx
+  pop  cx
+  pop  es
+  sti
+  ret
+
+
+;
+; uchar exmem_getbyte(ex_ptr addr)
+; Get extended memory byte
+;
+global _exmem_getbyte
+_exmem_getbyte:
+  cli
+  push es
+  push cx
+  push bx
+
+  mov  bx, sp           ; Save the stack pointer
+  mov  cx, [bx+10]
+  sal  cx, 8
+  cmp  cx, 0
+  je   .same_segment
+  mov  es, cx
+.same_segment:
+  mov  cx, [bx+8]
+  mov  bx, cx
+  mov  ax, 0
+
+  mov  al, [es:bx]
+
+  pop  bx
+  pop  cx
+  pop  es
+  sti
+  ret
 
 
 ;

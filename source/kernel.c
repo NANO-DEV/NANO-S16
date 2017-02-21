@@ -12,6 +12,8 @@
 uchar serial_status;  /* Serial port status */
 uint serial_debug = 0; /* Debug info through serial port */
 
+uchar a20_enabled = 0; /* A20 line enabled */
+
 uint screen_width  = 80; /* Screen size (text mode) */
 uint screen_height = 50;
 
@@ -63,7 +65,7 @@ static void* heap_alloc(uint size)
   uint i, j;
 
   if(size == 0) {
-      return 0;
+    return 0;
   }
 
   /* Get number of blocks to allocate */
@@ -105,6 +107,112 @@ static heap_free(void* ptr)
       if(heap[i].ptr == ptr && heap[i].used) {
         heap[i].used = 0;
         heap[i].ptr = 0;
+      }
+    }
+  }
+
+  return;
+}
+
+#define EXMEM_START 0x00010000
+#define EXMEM_LIMIT 0x00110000
+#define EXMEM_BLOCK_SIZE 0x10
+#define EXMEM_MAX_BLOCK 128
+struct EXMEMBLOCK {
+  ex_ptr   start;
+  uint32_t size;
+} ex_mem[EXMEM_MAX_BLOCK];
+
+/*
+ * Init extended memory: all blocks are unused
+ */
+static void exmem_init()
+{
+  memset(&ex_mem, 0, sizeof(ex_mem));
+}
+
+/*
+ * Allocate extended memory
+ */
+static ex_ptr exmem_alloc(uint32_t size)
+{
+  ex_ptr start = 0;
+  uint i;
+
+  /* If size is 0 or all blocks are used, return */
+  if(size==0 || ex_mem[EXMEM_MAX_BLOCK-1].size!=0) {
+    return 0;
+  }
+
+  /* Align blocks to 16 bytes */
+  size += size % (uint32_t)EXMEM_BLOCK_SIZE;
+
+  /* Find a continuous big enough free space */
+  for(i=0; i<EXMEM_MAX_BLOCK; i++) {
+    /* If this block is allocated */
+    if(ex_mem[i].start) {
+      /* If there are no more blocks, set not found and break */
+      if(i == EXMEM_MAX_BLOCK - 1) {
+        start = 0;
+        break;
+      }
+      /* A possible start is at the end of this block */
+      start = ex_mem[i].start + ex_mem[i].size;
+      /* If there is enough space, break */
+      if(ex_mem[i+1].start==0 || ex_mem[i+1].start>start+size) {
+        i++; /* The right place for the new block is after current block */
+        break;
+      }
+    } else {
+      /* Next blocks are free. If it's the first, set start address */
+      if(start == 0) {
+        start = (ex_ptr)EXMEM_START;
+      }
+      /* Set not found if there isn't enough space */
+      if((ex_ptr)EXMEM_LIMIT-start < size) {
+        start = 0;
+      }
+      break;
+    }
+  }
+
+  /* Found if start != 0 */
+  if(start != 0) {
+    /* Allocate block at i */
+    memcpy(&ex_mem[i+1], &ex_mem[i],
+      (EXMEM_MAX_BLOCK-i-1)*sizeof(struct EXMEMBLOCK));
+
+    ex_mem[i].start = start;
+    ex_mem[i].size = size;
+    return start;
+  }
+
+  /* Error: not found */
+  debugstr("EXMem alloc: BAD ALLOC (%U bytes)\n\r", size);
+  return 0;
+}
+
+/*
+ * Free memory in extended memory
+ */
+static void exmem_free(ex_ptr ptr)
+{
+  uint i = 0;
+  if(ptr != 0) {
+    while(i<EXMEM_MAX_BLOCK) {
+      /* Find block */
+      if(ex_mem[i].start == ptr) {
+        /* Free block */
+        ex_mem[i].start = 0;
+        ex_mem[i].size = 0;
+
+        /* Keep list ordered and contiguous */
+        memcpy(&ex_mem[i], &ex_mem[i+1],
+          (EXMEM_MAX_BLOCK-i-1)*sizeof(struct EXMEMBLOCK));
+        ex_mem[EXMEM_MAX_BLOCK-1].start = 0;
+        ex_mem[EXMEM_MAX_BLOCK-1].size = 0;
+      } else {
+        i++;
       }
     }
   }
@@ -196,6 +304,26 @@ uint kernel_service(uint service, void* param)
     case SYSCALL_MEM_FREE:
       heap_free(param);
       return 0;
+
+    case SYSCALL_EXMEM_ALLOCATE: {
+      struct TSYSCALL_EXMEM* ex = param;
+      ex->dst = exmem_alloc(ex->n);
+      return 0;
+    }
+    case SYSCALL_EXMEM_FREE: {
+      struct TSYSCALL_EXMEM* ex = param;
+      exmem_free(ex->dst);
+      return 0;
+    }
+    case SYSCALL_EXMEM_GET: {
+      struct TSYSCALL_EXMEM* ex = param;
+      return exmem_getbyte(ex->dst);
+    }
+    case SYSCALL_EXMEM_SET: {
+      struct TSYSCALL_EXMEM* ex = param;
+      exmem_setbyte(ex->dst, (uchar)ex->n);
+      return 0;
+    }
 
     case SYSCALL_FS_GET_INFO: {
       struct TSYSCALL_FSINFO* fi = param;
@@ -329,6 +457,9 @@ void kernel()
   /* Init heap */
   heap_init();
 
+  /* Init extended memory */
+  exmem_init();
+
   /* Init FS info */
   fs_init_info();
 
@@ -342,6 +473,7 @@ void kernel()
     uchar  str[72];
     uchar* tok = str;
     uchar* nexttok = tok;
+    ex_ptr test;
 
     memset(str, 0, sizeof(str));
     memset(argv, 0, sizeof(argv));
@@ -350,6 +482,7 @@ void kernel()
     putstr("> ");
     getstr(str, sizeof(str));
     debugstr("> %s\n\r", str);
+
 
     /* Tokenize */
     argc = 0;
@@ -527,6 +660,7 @@ void kernel()
         putstr("\n\r");
         putstr("System disk: %s\n\r", disk_to_string(system_disk));
         putstr("Serial port status: %s\n\r", serial_status & 0x80 ? "Error" : "Enabled");
+        putstr("A20 Line status: %s\n\r", a20_enabled ? "Enabled" : "Disabled");
         putstr("\n\r");
       } else {
         putstr("usage: info\n\r");

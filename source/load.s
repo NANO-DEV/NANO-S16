@@ -36,13 +36,41 @@ _main:
   int  0x14
   mov  [_serial_status], ah
 
+  ; Enable A20 line
+  mov  ax,2403h               ; A20-Gate Support
+  int  15h
+  jb   a20_failed             ; INT 15h is not supported
+  cmp  ah,0
+  jnz  a20_failed             ; INT 15h is not supported
+
+  mov  ax,2402h               ; A20-Gate Status
+  int  15h
+  jb   a20_failed             ; couldn't get status
+  cmp  ah,0
+  jnz  a20_failed             ; couldn't get status
+
+  cmp  al,1
+  jz   a20_activated          ; A20 is already activated
+
+  mov  ax,2401h               ; A20-Gate Activate
+  int  15h
+  jb   a20_failed             ; couldn't activate the gate
+  cmp  ah,0
+  jnz  a20_failed             ; couldn't activate the gate
+
+a20_activated:
+  mov  byte [_a20_enabled], 1
+  jmp  kernel_call
+a20_failed:
+  mov  byte [_a20_enabled], 0
+kernel_call:
   call _kernel
 
 
 ;
 ; Imported functions and variables
 ;
-extern _kernel, _system_disk, _serial_status, _install_ISR
+extern _kernel, _system_disk, _serial_status, _a20_enabled, _install_ISR
 
 LOADSEG EQU 0x0800 ; Where this code is loaded
 

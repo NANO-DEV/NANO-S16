@@ -228,26 +228,26 @@ uint getstr(uchar* str, uint max_count);
 
 
 /*
- * Copy string src to dest
+ * Copy string src to dst
  */
-uint strcpy(uchar* dest, uchar* src);
+uint strcpy(uchar* dst, uchar* src);
 
 /*
- * Copy string src to dest without exceeding
- * dest_size elements in dest
+ * Copy string src to dst without exceeding
+ * dst_size elements in dst
  */
-uint strcpy_s(uchar* dest, uchar* src, uint dest_size);
+uint strcpy_s(uchar* dst, uchar* src, uint dst_size);
 
 /*
- * Concatenate string src to dest
+ * Concatenate string src to dst
  */
-uint strcat(uchar* dest, uchar* src);
+uint strcat(uchar* dst, uchar* src);
 
 /*
- * Concatenate string src to dest, without exceeding
- * dest_size elements in dest
+ * Concatenate string src to dst, without exceeding
+ * dst_size elements in dst
  */
-uint strcat_s(uchar* dest, uchar* src, uint dest_size);
+uint strcat_s(uchar* dst, uchar* src, uint dst_size);
 
 /*
  * Get string length
@@ -292,25 +292,75 @@ uint strchr(uchar* src, uchar c);
 
 
 /*
- * Copy size bytes from src to dest
+ * Copy size bytes from src to dst
  */
-uint memcpy(uchar *dest, uchar *src, uint size);
+uint memcpy(uchar* dst, uchar* src, uint size);
 
 /*
- * Set size bytes from src to value
+ * Set size bytes from dst to value
  */
-uint memset(uchar *dest, uchar value, uint size);
-
+uint memset(uchar* dst, uchar value, uint size);
 
 
 /*
  * Allocate size bytes of contiguous memory
  */
 void* malloc(uint size);
+
 /*
  * Free allocated memory
  */
 void mfree(void* ptr);
+
+/* EXTENDED MEMORY
+ *
+ * The extended memory is more abundant (almost 1MB) than conventional memory,
+ * but it must be always managed by the kernel:
+ *
+ * - It's private to user programs, and can't be accessed by kernel, and so,
+ *     used as buffer for system calls, except for these calls explicitly
+ *     created to manage it.
+ * - While the compiler does not understand it, it can't be accessed by the
+ *     usual way (pointer[offset] = value  : is not allowed). It can only be
+ *     accessed using exmemcpy and exmemset functions.
+ * - To copy from/to conventional memory, use extended memory functions and
+ *     explicitly cast conventional memory pointers to ex_ptr.
+ *
+ * Example:
+ *
+ * uchar cbuff[128];
+ * ex_ptr  xbuff = exmalloc(128);
+ *
+ * // xbuff[0] = cbuff[0];  NOT ALLOWED
+ * // cbuff[0] = xbuff[0];  NOT ALLOWED
+ * // write(xbuff, ...); NOT ALLOWED. Instead, copy first to cbuff
+ *
+ * exmemcpy(xbuff, 0, (ex_ptr)cbuff, 0, sizeof(buff)); // This is right
+ * exmemcpy((ex_ptr)cbuff, 0, xbuff, 0, sizeof(buff)); // This is right
+ *
+ * exmfree(xbuff);
+ */
+
+/*
+ * Copy size bytes from src[src_offs] to dst[dst_offs] (extended memory)
+ */
+uint32_t exmemcpy(ex_ptr dst, uint32_t dst_offs,
+  ex_ptr src, uint32_t src_offs, uint32_t size);
+
+/*
+ * Set size bytes from src to value (extended memory)
+ */
+uint32_t exmemset(ex_ptr dst, uchar value, uint32_t size);
+
+
+/*
+ * Allocate size bytes of contiguous extended memory
+ */
+ex_ptr exmalloc(uint32_t size);
+/*
+ * Free allocated extended memory
+ */
+void exmfree(ex_ptr ptr);
 
 
 /*
