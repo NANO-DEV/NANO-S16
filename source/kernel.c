@@ -12,6 +12,8 @@
 uchar serial_status;  /* Serial port status */
 uint serial_debug = 0; /* Debug info through serial port */
 
+uchar a20_enabled = 0; /* A20 line enabled */
+
 uint screen_width  = 80; /* Screen size (text mode) */
 uint screen_height = 50;
 
@@ -31,7 +33,7 @@ typedef uint extern_main(uint argc, uchar* argv[]);
  * Heap related
  */
 #define HEAP_MAX_BLOCK   0x0080U
-#define HEAP_MEM_SIZE    0x4000U
+#define HEAP_MEM_SIZE    0x2000U
 #define HEAP_BLOCK_SIZE  (HEAP_MEM_SIZE / HEAP_MAX_BLOCK)
 
 static uchar HEAPADDR[HEAP_MEM_SIZE]; /* Allocate heap memory */
@@ -63,7 +65,7 @@ static void* heap_alloc(uint size)
   uint i, j;
 
   if(size == 0) {
-      return 0;
+    return 0;
   }
 
   /* Get number of blocks to allocate */
@@ -105,6 +107,112 @@ static heap_free(void* ptr)
       if(heap[i].ptr == ptr && heap[i].used) {
         heap[i].used = 0;
         heap[i].ptr = 0;
+      }
+    }
+  }
+
+  return;
+}
+
+#define LMEM_START 0x00010000
+#define LMEM_LIMIT 0x00110000
+#define LMEM_BLOCK_SIZE 0x10
+#define LMEM_MAX_BLOCK 64
+struct LMEMBLOCK {
+  lptr     start;
+  uint32_t size;
+} lmem[LMEM_MAX_BLOCK];
+
+/*
+ * Init far memory: all blocks are unused
+ */
+static void lmem_init()
+{
+  memset(&lmem, 0, sizeof(lmem));
+}
+
+/*
+ * Allocate far memory
+ */
+static lptr lmem_alloc(uint32_t size)
+{
+  lptr start = 0;
+  uint i;
+
+  /* If size is 0 or all blocks are used, return */
+  if(size==0 || lmem[LMEM_MAX_BLOCK-1].size!=0) {
+    return 0;
+  }
+
+  /* Align blocks to 16 bytes */
+  size += size % (uint32_t)LMEM_BLOCK_SIZE;
+
+  /* Find a continuous big enough free space */
+  for(i=0; i<LMEM_MAX_BLOCK; i++) {
+    /* If this block is allocated */
+    if(lmem[i].start) {
+      /* If there are no more blocks, set not found and break */
+      if(i == LMEM_MAX_BLOCK-1) {
+        start = 0;
+        break;
+      }
+      /* A possible start is at the end of this block */
+      start = lmem[i].start + lmem[i].size;
+      /* If there is enough space, break */
+      if(lmem[i+1].start==0 || lmem[i+1].start>start+size) {
+        i++; /* The right place for the new block is after current block */
+        break;
+      }
+    } else {
+      /* Next blocks are free. If it's the first, set start address */
+      if(start == 0) {
+        start = (lptr)LMEM_START;
+      }
+      /* Set not found if there isn't enough space */
+      if((lptr)LMEM_LIMIT-start < size) {
+        start = 0;
+      }
+      break;
+    }
+  }
+
+  /* Found if start != 0 */
+  if(start != 0) {
+    /* Allocate block at i */
+    memcpy(&lmem[i+1], &lmem[i],
+      (LMEM_MAX_BLOCK-i-1)*sizeof(struct LMEMBLOCK));
+
+    lmem[i].start = start;
+    lmem[i].size = size;
+    return start;
+  }
+
+  /* Error: not found */
+  debugstr("LMem alloc: BAD ALLOC (%U bytes)\n\r", size);
+  return 0;
+}
+
+/*
+ * Free far memory
+ */
+static void lmem_free(lptr ptr)
+{
+  uint i = 0;
+  if(ptr != 0) {
+    while(i<LMEM_MAX_BLOCK) {
+      /* Find block */
+      if(lmem[i].start == ptr) {
+        /* Free block */
+        lmem[i].start = 0;
+        lmem[i].size = 0;
+
+        /* Keep list ordered and contiguous */
+        memcpy(&lmem[i], &lmem[i+1],
+          (LMEM_MAX_BLOCK-i-1)*sizeof(struct LMEMBLOCK));
+        lmem[LMEM_MAX_BLOCK-1].start = 0;
+        lmem[LMEM_MAX_BLOCK-1].size = 0;
+      } else {
+        i++;
       }
     }
   }
@@ -174,8 +282,14 @@ uint kernel_service(uint service, void* param)
       return 0;
     }
 
-    case SYSCALL_IO_IN_KEY:
-      return io_in_key();
+    case SYSCALL_IO_IN_KEY: {
+      uint mode = (uint)*param;
+      uint c;
+      do {
+        c = io_in_key();
+      } while(c==0 && mode==WAIT_KEY);
+      return c;
+    }
 
     case SYSCALL_IO_OUT_CHAR_SERIAL:
       io_out_char_serial((uchar)*param);
@@ -196,6 +310,26 @@ uint kernel_service(uint service, void* param)
     case SYSCALL_MEM_FREE:
       heap_free(param);
       return 0;
+
+    case SYSCALL_LMEM_ALLOCATE: {
+      struct TSYSCALL_LMEM* lm = param;
+      lm->dst = lmem_alloc(lm->n);
+      return 0;
+    }
+    case SYSCALL_LMEM_FREE: {
+      struct TSYSCALL_LMEM* lm = param;
+      lmem_free(lm->dst);
+      return 0;
+    }
+    case SYSCALL_LMEM_GET: {
+      struct TSYSCALL_LMEM* lm = param;
+      return lmem_getbyte(lm->dst);
+    }
+    case SYSCALL_LMEM_SET: {
+      struct TSYSCALL_LMEM* lm = param;
+      lmem_setbyte(lm->dst, (uchar)lm->n);
+      return 0;
+    }
 
     case SYSCALL_FS_GET_INFO: {
       struct TSYSCALL_FSINFO* fi = param;
@@ -329,6 +463,9 @@ void kernel()
   /* Init heap */
   heap_init();
 
+  /* Init far memory */
+  lmem_init();
+
   /* Init FS info */
   fs_init_info();
 
@@ -350,6 +487,7 @@ void kernel()
     putstr("> ");
     getstr(str, sizeof(str));
     debugstr("> %s\n\r", str);
+
 
     /* Tokenize */
     argc = 0;
@@ -511,7 +649,7 @@ void kernel()
       /* Info command: show system info */
       if(argc == 1) {
         putstr("\n\r");
-        putstr("NANO S16 [Version 2.0 build 6]\n\r");
+        putstr("NANO S16 [Version 2.0 build 7]\n\r");
         putstr("\n\r");
 
         putstr("Disks:\n\r");
@@ -527,6 +665,7 @@ void kernel()
         putstr("\n\r");
         putstr("System disk: %s\n\r", disk_to_string(system_disk));
         putstr("Serial port status: %s\n\r", serial_status & 0x80 ? "Error" : "Enabled");
+        putstr("A20 Line status: %s\n\r", a20_enabled ? "Enabled" : "Disabled");
         putstr("\n\r");
       } else {
         putstr("usage: info\n\r");
@@ -572,7 +711,7 @@ void kernel()
         /* Ask for confirmation */
         putstr("\n\r");
         putstr("Press 'y' to confirm: ");
-        if(getLO(getkey()) != 'y') {
+        if(getLO(getkey(WAIT_KEY)) != 'y') {
           putstr("\n\rUser aborted operation\n\r");
           continue;
         }
@@ -675,6 +814,15 @@ void kernel()
         putstr("usage: time\n\r");
       }
 
+    } else if(strcmp(argv[0], "shutdown") == 0) {
+      /* Shutdown command: Shutdown computer */
+      if(argc == 1) {
+        apm_shutdown();
+        putstr("This computer does not support APM\n\r");
+      } else {
+        putstr("usage: shutdown\n\r");
+      }
+
     } else if(strcmp(argv[0], "config") == 0) {
       /* Time command: Show date and time */
       if(argc == 1) {
@@ -711,6 +859,7 @@ void kernel()
         putstr("makedir  - create directory\n\r");
         putstr("move     - move file or directory\n\r");
         putstr("read     - show file contents in screen\n\r");
+        putstr("shutdown - shutdown the computer\n\r");
         putstr("time     - show time and date\n\r");
         putstr("\n\r");
       } else if(argc == 2 &&  /* Easter egg */
@@ -736,15 +885,14 @@ void kernel()
     } else {
       /* Not a built-in command */
       /* Try to find an executable file */
-
+      uchar* prog_ext = ".bin";
       struct SFS_ENTRY entry;
       uchar prog_file_name[32];
       strcpy_s(prog_file_name, argv[0], sizeof(prog_file_name));
 
       /* Append .bin if there is not a '.' in the name*/
-      if(!strchr(prog_file_name, '.') &&
-        strlen(prog_file_name) < 28) {
-        strcat(prog_file_name, ".bin");
+      if(!strchr(prog_file_name, '.')) {
+        strcat_s(prog_file_name, prog_ext, sizeof(prog_file_name));
       }
 
       /* Find .bin file */
@@ -767,8 +915,8 @@ void kernel()
         extern_main* m = EXTERN_PROGRAM_MEMLOC;
 
         /* Check name ends with ".bin" */
-        if(strcmp(&prog_file_name[strchr(prog_file_name, '.') - 1], ".bin")) {
-          putstr("error: only .bin files can be executed\n\r");
+        if(strcmp(&prog_file_name[strchr(prog_file_name, '.') - 1], prog_ext)) {
+          putstr("error: only %s files can be executed\n\r", prog_ext);
           continue;
         }
 

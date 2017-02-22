@@ -18,7 +18,7 @@ extern _main
 INT_CODE equ 070h
 
 ;
-; uint syscall(uint s, void* p);
+; uint syscall(uint s, void* p)
 ; Generate OS interrupt with parameter
 ;
 global _syscall
@@ -36,6 +36,30 @@ _syscall:
   pop  bx
   pop  cx
 
+  ret
+
+
+;
+; lptr lp(void* ptr)
+; Convert pointer to lptr
+;
+global _lp
+_lp:
+  push bx
+
+  mov  edx, 0
+  mov  dx, es
+  shl  edx, 4
+
+  mov  eax, 0
+  mov  bx, sp
+  mov  ax, [bx+4]
+
+  add  edx, eax
+  mov  ax, dx
+  shr  edx, 20
+
+  pop  bx
   ret
 
 

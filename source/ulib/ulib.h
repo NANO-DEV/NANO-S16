@@ -165,14 +165,14 @@ void set_show_cursor(uint mode);
 /*
  * Special key codes
  *
- * getkey() function returns an uint
+ * getkey(...) function returns an uint
  * To check a KEY_LO_ code, compare lower byte
  * To check a KEY_HI_ code, compare higher byte
  * Alphanumeric and usual symbol keys are mapped to the
  * lower byte, and their key code is their char code.
  * Example:
  *
- * uint k = getkey();
+ * uint k = getkey(NO_WAIT);
  * if(getHI(k) == KEY_HI_DEL) ...
  * if(getLO(k) == 'a') ...
  */
@@ -213,9 +213,13 @@ void set_show_cursor(uint mode);
 uchar getchar();
 
 /*
- * Get key press. Blocking function
+ * Get key press. Returns 0 if there aren't new key presses
+ * on buffer and NO_WAIT mode is set. Otherwise waits until
+ * there is a new keypress in buffer
  */
-uint getkey();
+#define NO_WAIT  0
+#define WAIT_KEY 1
+uint getkey(uint mode);
 
 /*
  * Get a string from user. Returns when RETURN key is
@@ -228,26 +232,26 @@ uint getstr(uchar* str, uint max_count);
 
 
 /*
- * Copy string src to dest
+ * Copy string src to dst
  */
-uint strcpy(uchar* dest, uchar* src);
+uint strcpy(uchar* dst, uchar* src);
 
 /*
- * Copy string src to dest without exceeding
- * dest_size elements in dest
+ * Copy string src to dst without exceeding
+ * dst_size elements in dst
  */
-uint strcpy_s(uchar* dest, uchar* src, uint dest_size);
+uint strcpy_s(uchar* dst, uchar* src, uint dst_size);
 
 /*
- * Concatenate string src to dest
+ * Concatenate string src to dst
  */
-uint strcat(uchar* dest, uchar* src);
+uint strcat(uchar* dst, uchar* src);
 
 /*
- * Concatenate string src to dest, without exceeding
- * dest_size elements in dest
+ * Concatenate string src to dst, without exceeding
+ * dst_size elements in dst
  */
-uint strcat_s(uchar* dest, uchar* src, uint dest_size);
+uint strcat_s(uchar* dst, uchar* src, uint dst_size);
 
 /*
  * Get string length
@@ -292,25 +296,82 @@ uint strchr(uchar* src, uchar c);
 
 
 /*
- * Copy size bytes from src to dest
+ * Copy size bytes from src to dst
  */
-uint memcpy(uchar *dest, uchar *src, uint size);
+uint memcpy(uchar* dst, uchar* src, uint size);
 
 /*
- * Set size bytes from src to value
+ * Set size bytes from dst to value
  */
-uint memset(uchar *dest, uchar value, uint size);
-
+uint memset(uchar* dst, uchar value, uint size);
 
 
 /*
  * Allocate size bytes of contiguous memory
  */
 void* malloc(uint size);
+
 /*
  * Free allocated memory
  */
 void mfree(void* ptr);
+
+/* FAR MEMORY
+ *
+ * The far pointers (or long pointers, lptr) allow access to more than 1MB,
+ * while near memory pointers do it only for 64KB. Vars and malloc allocations
+ * are usually allocated in near memory and can be used in a conventional way.
+ * Conversely, far memory must be always managed by the kernel:
+ *
+ * - Since the compiler does not "understand" far pointers, they can't be
+ *     used where near or conventional pointers are expected, like most
+ *     system calls.
+ * - Since the compiler does not "understand" far pointers, they can't be
+ *     accessed by the usual way (pointer[offset] = value  : is not allowed).
+ *     They can only be accessed using lmemcpy and lmemset functions.
+ * - To copy far memory from/to near memory, use far memory functions and lp()
+ *     function to cast near memory pointers to lptr.
+ *
+ * Example:
+ *
+ * uchar cbuff[128];            // Conventional near memory
+ * lptr  xbuff = lmalloc(128);  // Long pointer, far memory
+ *
+ * // xbuff[0] = cbuff[0];  NOT ALLOWED
+ * // cbuff[0] = xbuff[0];  NOT ALLOWED
+ * // write(xbuff, ...); NOT ALLOWED. Instead, copy first to cbuff
+ *
+ * lmemcpy(xbuff, 0, lp(cbuff), 0, sizeof(buff)); // This is right
+ * lmemcpy(lp(cbuff), 0, xbuff, 0, sizeof(buff)); // This is right
+ *
+ * lmfree(xbuff);
+ */
+
+/*
+ * Convert pointer to lptr
+ */
+lptr lp(void* ptr);
+
+/*
+ * Copy size bytes from src[src_offs] to dst[dst_offs] (far memory)
+ */
+uint32_t lmemcpy(lptr dst, uint32_t dst_offs,
+  lptr src, uint32_t src_offs, uint32_t size);
+
+/*
+ * Set size bytes from src to value (far memory)
+ */
+uint32_t lmemset(lptr dst, uchar value, uint32_t size);
+
+
+/*
+ * Allocate size bytes of contiguous far memory
+ */
+lptr lmalloc(uint32_t size);
+/*
+ * Free allocated far memory
+ */
+void lmfree(lptr ptr);
 
 
 /*

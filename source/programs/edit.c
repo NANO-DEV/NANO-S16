@@ -21,7 +21,27 @@ static uint SCREEN_WIDTH = 80;
 static uint SCREEN_HEIGHT = 25;
 
 /*
- * Given a string (uchar* line input parameter)
+ * Get first char of a far memory string.
+ * Far memory needs to be accessed thorugh its API
+ */
+static uchar getlc(lptr ptr)
+{
+  uchar c = 0;
+  lmemcpy(lp(&c), (uint32_t)0, ptr, (uint32_t)0, (uint32_t)1);
+  return c;
+}
+
+/*
+ * Set a char of a far memory string at a given offset
+ * Far memory needs to be accessed thorugh its API
+ */
+static void setlc(lptr ptr, uint32_t offset, uchar c)
+{
+  lmemcpy(ptr, offset, lp(&c), (uint32_t)0, (uint32_t)1);
+}
+
+/*
+ * Given a string (ext_ptr line input parameter)
  * returns a pointer to next line or to end of string
  * if there are not more lines
  *
@@ -29,16 +49,16 @@ static uint SCREEN_HEIGHT = 25;
  * - shown at given screen_y if mode==SHOW_CURRENT
  * - just skipped if mode==SKIP_CURRENT
  */
-static uchar* next_line(uint mode, uint screen_y, uchar* line)
+static lptr next_line(uint mode, uint screen_y, lptr line)
 {
   uint x = 0;
 
   /* Process string until next line or end of string
    * and show text if needed
    */
-  while(line && *line && *line!='\n' && x<SCREEN_WIDTH) {
+  while(line && getlc(line) && getlc(line)!='\n' && x<SCREEN_WIDTH) {
     if(mode == SHOW_CURRENT) {
-      putchar_attr(x++, screen_y, *line, EDITOR_ATTRIBUTES);
+      putchar_attr(x++, screen_y, getlc(line), EDITOR_ATTRIBUTES);
     }
     line++;
   }
@@ -49,7 +69,7 @@ static uchar* next_line(uint mode, uint screen_y, uchar* line)
   }
 
   /* Advance until next line begins */
-  if(line && *line == '\n') {
+  if(line && getlc(line) == '\n') {
     line++;
   }
 
@@ -61,22 +81,22 @@ static uchar* next_line(uint mode, uint screen_y, uchar* line)
  * number of line of buffer.
  * It's recommended to hide cursor before calling this function
  */
-void show_buffer_at_line(uchar* buff, uint n)
+void show_buffer_at_line(lptr buff, uint n)
 {
   uint l = 0;
 
   /* Skip buffer until required line number */
-  while(l<n && *buff) {
+  while(l<n && getlc(buff)) {
     buff = next_line(SKIP_CURRENT, 0, buff);
     l++;
   }
 
   /* Show required buffer lines */
   for(l=1; l<SCREEN_HEIGHT; l++) {
-    if(*buff) {
+    if(getlc(buff)) {
       buff = next_line(SHOW_CURRENT, l, buff);
     } else {
-      next_line(SHOW_CURRENT, l, 0);
+      next_line(SHOW_CURRENT, l, (lptr)0);
     }
   }
 }
@@ -85,15 +105,14 @@ void show_buffer_at_line(uchar* buff, uint n)
  * Convert linear buffer offset (uint offset)
  * to line and col (output params)
  */
-void buffer_offset_to_linecol(uchar* buff, uint offset, uint* col, uint* line)
+void buffer_offset_to_linecol(lptr buff, uint32_t offset, uint* col, uint* line)
 {
-  uint c;
   *col = 0;
   *line = 0;
 
-  for(c=0; c<offset && buff[c]; c++) {
+  for(; offset>0 && getlc(buff); offset--, buff++) {
 
-    if(buff[c] == '\n') {
+    if(getlc(buff) == '\n') {
       (*line)++;
       *col = 0;
     } else {
@@ -111,22 +130,24 @@ void buffer_offset_to_linecol(uchar* buff, uint offset, uint* col, uint* line)
  * Converts line and col (input params) to
  * linear buffer offset (return value)
  */
-uint linecol_to_buffer_offset(uchar* buff, uint col, uint line)
+uint32_t linecol_to_buffer_offset(lptr buff, uint col, uint line)
 {
-  uint offset = 0;
-  while(buff[offset] && line>0) {
-    if(buff[offset] == '\n') {
+  uint32_t offset = 0;
+  while(getlc(buff) && line>0) {
+    if(getlc(buff) == '\n') {
       line--;
     }
     offset++;
+    buff++;
   }
 
-  while(buff[offset] && col>0) {
-    if(buff[offset] == '\n') {
+  while(getlc(buff) && col>0) {
+    if(getlc(buff) == '\n') {
       break;
     }
     col--;
     offset++;
+    buff++;
   }
 
   return offset;
@@ -143,15 +164,15 @@ uint main(uint argc, uchar* argv[])
   uint   n = 0;
   uint   result = 0;
 
-  /* buff is dinamically allocated and
-   * always contains the full file.
-   * buff_size is the size in bytes of allocated buff
+  /* buff is fixed size and allocated in far memory so it
+   * can be big enough.
+   * buff_size is the size in bytes actually used in buff
    * buff_cursor_offset is the linear offset of current
    * cursor position inside buff
    */
-  uchar* buff = 0;
-  uint   buff_size = 0;
-  uint   buff_cursor_offset = 0;
+  lptr     buff = 0;
+  uint32_t buff_size = 0;
+  uint32_t buff_cursor_offset = 0;
 
   /* First line number to display in the editor area */
   uint   current_line = 0;
@@ -173,48 +194,49 @@ uint main(uint argc, uchar* argv[])
     return 1;
   }
 
+  /* Allocate fixed size buffer */
+  buff = lmalloc((uint32_t)0xFFFF);
+  if(buff == 0) {
+    putstr("Error: can't allocate memory\n\r");
+    return 1;
+  }
+
   /* Find file */
   n = get_entry(&entry, argv[1], UNKNOWN_VALUE, UNKNOWN_VALUE);
 
   /* Load file or show error */
   if(n<ERROR_ANY && (entry.flags & FST_FILE)) {
-
-    /* +1 because maybe the file is empty */
-    /* or we need to append a 0 at the end */
-    buff = malloc(entry.size + 1);
-    if(buff != 0) {
-      buff[entry.size] = 0;
-      buff_size = entry.size;
-      result = read_file(buff, argv[1], 0, entry.size);
-      if(result != entry.size) {
-        mfree(buff);
+    uint32_t offset = 0;
+    uchar cbuff[512];
+    setlc(buff, entry.size, 0);
+    buff_size = entry.size;
+    while(result = read_file(cbuff, argv[1], (uint)offset, sizeof(cbuff))) {
+      if(result >= ERROR_ANY) {
+        lmfree(buff);
         putstr("Can't read file %s (error=%x)\n\r", argv[1], result);
         return 1;
       }
-      /* Buffer must finish with a 0 and */
-      /* must fit at least this 0, so buff_size can't be 0 */
-      if(buff_size == 0 || buff[buff_size-1] != 0) {
-        /* buff_size can be increased without resizing the buffer */
-        /* because entry.size + 1 bytes were actually allocated */
-        /* but buff_size was initialized to only entry.size */
-        buff_size++;
-      }
-    } else {
-      putstr("Not enough memory\n\r");
+      lmemcpy(buff, offset, lp(cbuff), (uint32_t)0, (uint32_t)result);
+      offset += result;
+    }
+    if(offset != entry.size) {
+      lmfree(buff);
+      putstr("Can't read file (readed %d bytes, expected %d)\n\r",
+        (uint)offset, entry.size);
       return 1;
+    }
+    /* Buffer must finish with a 0 and */
+    /* must fit at least this 0, so buff_size can't be 0 */
+    if(buff_size == 0 || getlc(buff + buff_size-(lptr)1) != 0) {
+      buff_size++;
     }
   }
 
   /* Create 1 byte buffer if this is a new file */
   /* This byte is for the final 0 */
-  if(buff == 0) {
-    buff = malloc(1);
-    if(buff == 0) {
-      putstr("Not enough memory\n\r");
-      return 1;
-    }
+  if(buff_size == 0) {
     buff_size = 1;
-    memset(buff, 0, buff_size);
+    lmemset(buff, 0, buff_size);
   }
 
   /* Get screen size */
@@ -243,15 +265,29 @@ uint main(uint argc, uchar* argv[])
     uint col, line;
 
     /* Get key press */
-    k  = getkey();
+    k  = getkey(WAIT_KEY);
     kh = getHI(k);
     kl = getLO(k);
 
     /* Process key actions */
 
+    /* Keys to ignore */
+    if((kh>=KEY_HI_F1 && kh<=KEY_HI_F10) ||
+      kh==KEY_HI_F11 || kh==KEY_HI_F12 ||
+      kh==KEY_HI_PRT_SC || kh==KEY_HI_INS) {
+        continue;
+
     /* Key F1: Save */
-    if(kh == KEY_HI_F1) {
-      result = write_file(buff, argv[1], 0, buff_size, FWF_CREATE | FWF_TRUNCATE);
+    } else if(kh == KEY_HI_F1) {
+      uint32_t offset = 0;
+      uchar cbuff[512];
+      result = 0;
+      while(offset<buff_size && result<ERROR_ANY) {
+        uint32_t to_copy = min(sizeof(cbuff), buff_size-offset);
+        lmemcpy(lp(cbuff), (uint32_t)0, buff, offset, to_copy);
+        result = write_file(cbuff, argv[1], (uint)offset, (uint)to_copy, FWF_CREATE | FWF_TRUNCATE);
+        offset += to_copy;
+      }
       if(result < ERROR_ANY) {
         putchar_attr(strlen(argv[1]), 0, ' ', TITLE_ATTRIBUTES);
       } else {
@@ -281,53 +317,58 @@ uint main(uint argc, uchar* argv[])
         buff_cursor_offset++;
       }
 
+    /* HOME, END, PG_UP and PG_DN keys */
+    } else if(kh == KEY_HI_HOME) {
+      buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
+      col = 0;
+      buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
+
+    } else if(kh == KEY_HI_END) {
+      buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
+      col = 0xFFFF;
+      buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
+
+    } else if(kh == KEY_HI_PG_DN) {
+      buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
+      line += SCREEN_HEIGHT-1;
+      buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
+
+    } else if(kh == KEY_HI_PG_UP) {
+      buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
+      line -= min(line, SCREEN_HEIGHT-1);
+      buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
+
 
     /* Backspace key: delete char before cursor and move cursor there */
     } else if(kl == KEY_LO_BACKSPACE) {
       if(buff_cursor_offset > 0) {
-        uchar* new_buff = malloc(buff_size - 1);
-        if(new_buff != 0) {
-          memcpy(new_buff, buff, buff_cursor_offset - 1);
-          memcpy(&new_buff[buff_cursor_offset-1], &buff[buff_cursor_offset], buff_size - buff_cursor_offset);
-          mfree(buff);
-          buff_size--;
-          buff = new_buff;
-          putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
-          buff_cursor_offset--;
-        }
+        lmemcpy(buff, buff_cursor_offset-1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
+        buff_size--;
+        putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
+        buff_cursor_offset--;
       }
 
     /* Del key: delete char at cursor */
     } else if(kh == KEY_HI_DEL) {
-      if(buff_cursor_offset < buff_size - 1) {
-        uchar* new_buff = malloc(buff_size - 1);
-        if(new_buff != 0) {
-          memcpy(new_buff, buff, buff_cursor_offset);
-          memcpy(&new_buff[buff_cursor_offset], &buff[buff_cursor_offset+1], buff_size - buff_cursor_offset - 1);
-          mfree(buff);
-          buff_size--;
-          buff = new_buff;
-          putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
-        }
+      if(buff_cursor_offset < buff_size-1) {
+        lmemcpy(buff, buff_cursor_offset, buff, buff_cursor_offset+1, buff_size-buff_cursor_offset-1);
+        buff_size--;
+        putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
       }
 
     /* Any other key but esc: insert char at cursor */
     } else if(kl != KEY_LO_ESC) {
-      uchar* new_buff = malloc(buff_size + 1);
-      if(new_buff != 0) {
-        memcpy(new_buff, buff, buff_cursor_offset);
 
-        if(kl == KEY_LO_RETURN) {
-          kl = '\n';
-        }
-
-        new_buff[buff_cursor_offset++] = kl;
-        memcpy(&new_buff[buff_cursor_offset], &buff[buff_cursor_offset-1], buff_size + 1 - buff_cursor_offset);
-        mfree(buff);
-        buff_size++;
-        buff = new_buff;
-        putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
+      if(kl == KEY_LO_RETURN) {
+        kl = '\n';
       }
+      if(kh == KEY_HI_TAB) {
+        kl = ' ';
+      }
+      lmemcpy(buff, buff_cursor_offset+1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
+      setlc(buff, buff_cursor_offset++, kl);
+      buff_size++;
+      putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
     }
 
     /* Update cursor position and display */
@@ -346,7 +387,7 @@ uint main(uint argc, uchar* argv[])
   }
 
   /* Free buffer */
-  mfree(buff);
+  lmfree(buff);
 
   /* Reset screen */
   clear_screen();

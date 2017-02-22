@@ -36,13 +36,46 @@ _main:
   int  0x14
   mov  [_serial_status], ah
 
+  ; Enable A20 line
+  mov  ax,2401h               ; A20-Gate Activate by BIOS
+  int  15h
+
+  cli
+  push es                     ; Save segment, disable interrupts
+
+  mov  bx, 0x0000             ; Write byte 0x00 to 0x0000:0x0500
+  mov  es, bx
+  mov  bx, 0x0500
+  mov  byte [es:bx], 0x00
+
+  mov  bx, 0xFFFF             ; Write byte 0xFF to 0xFFFF:0x0510
+  mov  es, bx
+  mov  bx, 0x0510
+  mov  byte [es:bx], 0xFF
+
+  mov  bx, 0x0000             ; If the memory wraps around
+  mov  es, bx                 ; these positions will refer to the same byte.
+  mov  bx, 0x0500             ; If the byte at 0x0000:0x0510 is now 0xFF
+  mov  al, [es:bx]            ; then the memory wrapped around
+  cmp  al, 0x00
+
+  pop  es                      ; Restore segment, enable interrupts
+  sti
+  jne  a20_failed             ; couldn't activate the gate
+
+a20_activated:
+  mov  byte [_a20_enabled], 1
+  jmp  kernel_call
+a20_failed:
+  mov  byte [_a20_enabled], 0
+kernel_call:
   call _kernel
 
 
 ;
 ; Imported functions and variables
 ;
-extern _kernel, _system_disk, _serial_status, _install_ISR
+extern _kernel, _system_disk, _serial_status, _a20_enabled, _install_ISR
 
 LOADSEG EQU 0x0800 ; Where this code is loaded
 

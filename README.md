@@ -9,7 +9,7 @@ This software is intended to be just a hobby OS. Creator makes no warranty for t
 
 System requirements:
 * x86 compatible computer
-* 64Kb of RAM
+* 64Kb of RAM (1MB recommended)
 * 1.44Mb disk
 * VGA graphics card
 
@@ -147,6 +147,9 @@ Example:
 read documents/doc.txt
 ```
 
+####SHUTDOWN
+Shutdown the computer.
+
 ####TIME
 Show current date and time.
 
@@ -158,28 +161,26 @@ The easiest way to develop new user programs is:
 1. Setup the development system so it contains a copy of the full source tree and it's able to build and test it. See the building and testing pages.
 
 2. Create a new `programname.c` file in `source/programs` folder with this code:
+    ```
+    /*
+     * User program: programname
+     */
 
-```
- /*
-  * User program: programname
-  */
+     #include "types.h"
+     #include "ulib/ulib.h"
 
- #include "types.h"
- #include "ulib/ulib.h"
-
- uint main(uint argc, uchar* argv[])
- {
-   return 0;
- }
- ```
-
+     uint main(uint argc, uchar* argv[])
+     {
+       return 0;
+     }
+     ```
 3. Edit this line of `source/Makefile` and add `$(PROGDIR)programname.bin` at the end, like this:
-```
-programs: $(PROGDIR)edit.bin $(PROGDIR)programname.bin
-```
+    ```
+    programs: $(PROGDIR)edit.bin $(PROGDIR)programname.bin
+    ```
 4. Edit this line of `Makefile` and add `$(SOURCEDIR)programs/programname.bin` at the end, like this:
-```
-USERFILES := $(SOURCEDIR)programs/edit.bin $(SOURCEDIR)programs/programname.bin
-```
+    ```
+    USERFILES := $(SOURCEDIR)programs/edit.bin $(SOURCEDIR)programs/programname.bin
+    ```
 5. Add code to `programname.c`. See all available system functions in `ulib/ulib.h`
 6. Build and test

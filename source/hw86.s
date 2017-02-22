@@ -34,26 +34,26 @@ extern _sputstr
 
 
 ;
-; void io_set_text_mode();
+; void io_set_text_mode()
 ; Set the text mode to 80x25 16 colors
 ; and cursor shape to blinking
 ;
 global _io_set_text_mode
 _io_set_text_mode:
-  push ax
-  push bx
+push ax
+push bx
 
-  mov  al, 0x03
-  mov  ah, 0x00
-  int  0x10
+mov  al, 0x03
+mov  ah, 0x00
+int  0x10
 
-  mov  ax, 0x1112       ; Use this to set 80x50 video mode
-  mov  bl, 0
-  int  0x10
+mov  ax, 0x1112       ; Use this to set 80x50 video mode
+mov  bl, 0
+int  0x10
 
-  pop  bx
-  pop  ax
-  ret
+pop  bx
+pop  ax
+ret
 
 
 ;
@@ -86,7 +86,7 @@ extern _screen_width, _screen_height
 
 
 ;
-; void io_out_char(uchar c);
+; void io_out_char(uchar c)
 ; Write a char to display in teletype mode
 ; Parameters are passed on the stack
 global  _io_out_char
@@ -96,8 +96,9 @@ _io_out_char:
 
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+6]       ; Get char from string
-  mov  ah, 0Eh          ; int 10h teletype function
-  int  10h              ; Print it
+  mov  bx, 0x01
+  mov  ah, 0x0E         ; int 10h teletype function
+  int  0x10             ; Print it
 
   pop  ax
   pop  bx
@@ -105,7 +106,7 @@ _io_out_char:
 
 
 ;
-; void io_out_char_attr(uint x, uint y, uchar c, uchar color);
+; void io_out_char_attr(uint x, uint y, uchar c, uchar color)
 ; Write a char to display in specific position
 ;
 global  _io_out_char_attr
@@ -121,7 +122,7 @@ _io_out_char_attr:
   mov  dh, [bx+12]
   mov  ah, 2
   mov  bh, 0
-  int  10h
+  int  0x10
 
   ; Print char
   mov  bx, sp
@@ -130,7 +131,7 @@ _io_out_char_attr:
   mov  ah, 9
   mov  bh, 0
   mov  cx, 1
-  int  10h
+  int  0x10
 
   pop  dx
   pop  cx
@@ -141,7 +142,7 @@ _io_out_char_attr:
 
 
 ;
-; void io_out_char_serial(uchar c);
+; void io_out_char_serial(uchar c)
 ; Write a char to serial port
 ;
 global  _io_out_char_serial
@@ -155,7 +156,7 @@ _io_out_char_serial:
   mov  dx, 0            ; Port number
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+8]       ; Get char from string
-  mov  ah, 01h          ; int 14h ah=01h: write
+  mov  ah, 0x01         ; int 14h ah=01h: write
   int  0x14             ; Send it
 
   mov byte [_serial_status], ah
@@ -167,7 +168,7 @@ _io_out_char_serial:
   ret
 
 ;
-; uchar io_in_char_serial();
+; uchar io_in_char_serial()
 ; Read a char from serial port
 ;
 global  _io_in_char_serial
@@ -179,7 +180,7 @@ _io_in_char_serial:
   jne  .skip
   mov  dx, 0            ; Port number
   mov  al, 0
-  mov  ah, 02h          ; int 14h ah=02h: read
+  mov  ah, 0x02         ; int 14h ah=02h: read
   int  0x14             ; Get it
 
   ;mov byte [_serial_status], ah
@@ -196,7 +197,7 @@ _io_in_char_serial:
 extern _serial_status
 
 ;
-; void io_hide_cursor();
+; void io_hide_cursor()
 ; Hide the cursor in text mode using BIOS
 ;
 global  _io_hide_cursor
@@ -212,7 +213,7 @@ _io_hide_cursor:
 
 
 ;
-; void io_show_cursor();
+; void io_show_cursor()
 ; Show the cursor in text mode using BIOS
 ;
 ;
@@ -224,14 +225,14 @@ _io_show_cursor:
   mov  cl, 7
   mov  ah, 1
   mov  al, 3
-  int  10h
+  int  0x10
 
   popa
   ret
 
 
 ;
-; void io_get_cursor_position(uint* x, uint* y);
+; void io_get_cursor_position(uint* x, uint* y)
 ; Get the cursor position
 ;
 ;
@@ -243,7 +244,7 @@ _io_get_cursor_pos:
 
   mov  ah, 3
   mov  bh, 0
-  int  10h
+  int  0x10
 
   mov  bx, sp
   mov  bx, [bx+8]
@@ -258,7 +259,7 @@ _io_get_cursor_pos:
 
 
 ;
-; void io_set_cursor_position(uint x, uint y);
+; void io_set_cursor_position(uint x, uint y)
 ; Set the cursor position
 ;
 ;
@@ -273,7 +274,7 @@ _io_set_cursor_pos:
   mov  byte dh, [bx+10]
   mov  ah, 2
   mov  bh, 0
-  int  10h
+  int  0x10
 
   pop  dx
   pop  bx
@@ -287,9 +288,17 @@ _io_set_cursor_pos:
 ;
 global _io_in_key
 _io_in_key:
+  mov  ax, 0            ; BIOS call to check if ther is a key in buffer
+  mov  ah, 0x11
+  int  0x16
+  jz   .no_key
+
+  mov  ah, 0x10         ; BIOS call to wait for key
+  int  0x16             ; Since there is one in buffer, there is no wait
+  ret
+
+.no_key:                ; No key pressed, return 0
   mov  ax, 0
-  mov  ah, 10h          ; BIOS call to wait for key
-  int  16h
   ret
 
 
@@ -311,8 +320,8 @@ global _get_time
 _get_time:
   pusha
 
-  mov  ah, 02h
-  int  1ah
+  mov  ah, 0x02
+  int  0x1A
   mov  bx, sp
   mov  ax, [bx+18]
   mov  bx, ax
@@ -322,8 +331,8 @@ _get_time:
   inc  bx
   mov  [bx], dh
 
-  mov  ah, 04h
-  int  1ah
+  mov  ah, 0x04
+  int  0x1A
   mov  bx, sp
   mov  ax, [bx+20]
   mov  bx, ax
@@ -374,7 +383,7 @@ _read_disk_sector:
   pusha
 
   stc                   ; A few BIOSes do not set properly on error
-  int  13h              ; Read sectors
+  int  0x13             ; Read sectors
 
   jnc  .read_finished
 
@@ -436,7 +445,7 @@ _write_disk_sector:
   mov  bx, si
 
   stc                   ; A few BIOSes do not set properly on error
-  int  13h              ; Read sectors
+  int  0x13             ; Read sectors
 
   jc   .write_failure
 
@@ -472,7 +481,7 @@ disk_reset:
   mov  dl, [tdev]
 
   stc
-  int  13h
+  int  0x13
   pop  dx
   pop  ax
   ret
@@ -548,7 +557,7 @@ extern _disk_info
 
 
 ;
-; uint get_disk_info(uint disk, uint* st, uint* hd, , uint* cl);
+; uint get_disk_info(uint disk, uint* st, uint* hd, , uint* cl)
 ;
 ;
 global _get_disk_info
@@ -563,7 +572,7 @@ _get_disk_info:
   mov  di, 0
   mov  byte dl, [tdev]
   mov  ah, 8            ; Get disk parameters
-  int  13h
+  int  0x13
   jc   .error           ; Detect possible errors
   cmp  dl, 0
   je   .error
@@ -573,7 +582,7 @@ _get_disk_info:
   push cx
   mov  bx, sp           ; Save the stack pointer
   mov  ax, [bx+22]
-  and  cx, 3Fh          ; Maximum sector number
+  and  cx, 0x3F         ; Maximum sector number
   mov  bx, ax
   mov  [bx], cx         ; Sector numbers start at 1
   mov  bx, sp           ; Save the stack pointer
@@ -584,9 +593,9 @@ _get_disk_info:
   mov  [bx], dx
   pop  cx
   mov  ax, cx           ; Cylinders
-  and  ax, 0C0h
+  and  ax, 0xC0
   shl  ax, 2
-  and  cx, 0FF00h
+  and  cx, 0xFF00
   shr  cx, 8
   or   cx, ax
   mov  ax, cx
@@ -609,6 +618,130 @@ _get_disk_info:
 
 dsects dw 0             ; Current disk sectors per track
 dsides dw 0             ; Current disk sides
+
+
+;
+; void lmem_setbyte(lptr addr, uchar b)
+; Set far memory byte
+;
+global _lmem_setbyte
+_lmem_setbyte:
+  cli
+  push es
+  push cx
+  push bx
+  push ax
+
+  mov  bx, sp
+  mov  ecx, [bx+12]
+  sal  cx, 8
+  mov  es, cx
+  mov  cx, [bx+10]
+  mov  al, [bx+14]
+  mov  bx, cx
+
+  mov  [es:bx], al
+
+  pop  ax
+  pop  bx
+  pop  cx
+  pop  es
+  sti
+  ret
+
+
+;
+; uchar lmem_getbyte(lptr addr)
+; Get far memory byte
+;
+global _lmem_getbyte
+_lmem_getbyte:
+  cli
+  push es
+  push cx
+  push bx
+
+  mov  bx, sp
+  mov  cx, [bx+10]
+  sal  cx, 8
+  mov  es, cx
+  mov  cx, [bx+8]
+  mov  bx, cx
+  mov  ax, 0
+
+  mov  al, [es:bx]
+
+  pop  bx
+  pop  cx
+  pop  es
+  sti
+  ret
+
+
+;
+; void outb(uchar value, uint port);
+; write byte to port
+;
+global _outb
+_outb:
+  push ax
+  push bx
+  push dx
+
+	mov	 bx, sp
+	mov	 ax, [bx+8]
+	mov	 dx, [bx+10]
+	out	 dx, al
+
+  pop  dx
+  pop  bx
+  pop  ax
+	ret
+
+
+;
+; uchar inb(uint port);
+; Read byte from port
+;
+global _inb
+_inb:
+  push bx
+  push dx
+
+  mov  ah, 0
+  mov	 bx, sp
+	mov	 dx, [bx+6]
+	in	 al, dx
+
+	pop  dx
+  pop  bx
+  ret
+
+
+;
+; void apm_shutdown()
+;	Power off system using APM
+;
+global _apm_shutdown
+_apm_shutdown:
+  mov  ax, 0x5301
+  mov  bx, 0
+  int  0x15
+  jc   .error
+
+  mov  ax, 0x5308
+  mov  bx, 0x0001
+  mov  cx, 0x0001
+  int  0x15
+  jc   .error
+
+  mov  ax, 0x5307
+  mov  bx, 0x0001
+  mov  cx, 0x0003
+  int  0x15
+
+.error:
+  ret
 
 
 ;

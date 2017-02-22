@@ -34,7 +34,7 @@ uchar getLO(uint c)
  */
 #define D_STR_SIZE 32
 typedef void *outchar_function(uchar);
-void format_str_outchar(uchar *format, uint* args, outchar_function outchar)
+void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
 {
   while(*format) {
     if(*format == '%') {
@@ -112,9 +112,9 @@ void sputchar(uchar c)
 /*
  * Send complex string to the serial port
  */
-void sputstr(uchar *format, ...)
+void sputstr(uchar* format, ...)
 {
-  format_str_outchar(format, &format + 1, sputchar);
+  format_str_outchar(format, &format+1, sputchar);
 }
 
 /*
@@ -136,9 +136,9 @@ void debugchar(uchar c)
 /*
  * Send a complex string on the debug output
  */
-void debugstr(uchar *format, ...)
+void debugstr(uchar* format, ...)
 {
-  format_str_outchar(format, &format + 1, debugchar);
+  format_str_outchar(format, &format+1, debugchar);
 }
 
 /*
@@ -173,9 +173,9 @@ void putchar(uchar c)
 /*
  * Display formatted string on the screen
  */
-void putstr(uchar *format, ...)
+void putstr(uchar* format, ...)
 {
-  format_str_outchar(format, &format + 1, putchar);
+  format_str_outchar(format, &format+1, putchar);
 }
 
 /*
@@ -230,16 +230,19 @@ void set_show_cursor(uint mode)
  */
 uchar getchar()
 {
-  uint c = syscall(SYSCALL_IO_IN_KEY, 0);
+  uint c = 0;
+  while(c == 0) {
+    c = syscall(SYSCALL_IO_IN_KEY, 0);
+  }
   return (uchar)(c & 0x00FF);
 }
 
 /*
  * Get key press
  */
-uint getkey()
+uint getkey(uint mode)
 {
-  return syscall(SYSCALL_IO_IN_KEY, 0);
+  return syscall(SYSCALL_IO_IN_KEY, &mode);
 }
 
 /*
@@ -276,64 +279,64 @@ uint getstr(uchar* str, uint max_count)
 }
 
 /*
- * Copy string src to dest
+ * Copy string src to dst
  */
-uint strcpy(uchar *dest, uchar *src)
+uint strcpy(uchar* dst, uchar* src)
 {
   uint i = 0;
   while(src[i] != 0) {
-    dest[i] = src[i];
+    dst[i] = src[i];
     i++;
   }
-  dest[i] = 0;
+  dst[i] = 0;
   return i;
 }
 
 /*
- * Copy string src to dest without exceeding
- * dest_size elements in dest
+ * Copy string src to dst without exceeding
+ * dst_size elements in dst
  */
-uint strcpy_s(uchar *dest, uchar *src, uint dest_size)
+uint strcpy_s(uchar* dst, uchar* src, uint dst_size)
 {
   uint i = 0;
-  while(src[i]!=0 && i+1<dest_size) {
-    dest[i] = src[i];
+  while(src[i]!=0 && i+1<dst_size) {
+    dst[i] = src[i];
     i++;
   }
-  dest[i] = 0;
+  dst[i] = 0;
   return i;
 }
 
 /*
- * Concatenate string src to dest
+ * Concatenate string src to dst
  */
-uint strcat(uchar *dest, uchar *src)
+uint strcat(uchar* dst, uchar* src)
 {
   uint j = 0;
-  uint i = strlen(dest);
+  uint i = strlen(dst);
   while(src[j] != 0) {
-    dest[i] = src[j];
+    dst[i] = src[j];
     i++;
     j++;
   }
-  dest[i] = 0;
+  dst[i] = 0;
   return i;
 }
 
 /*
- * Concatenate string src to dest, without exceeding
- * dest_size elements in dest
+ * Concatenate string src to dst, without exceeding
+ * dst_size elements in dst
  */
-uint strcat_s(uchar* dest, uchar* src, uint dest_size)
+uint strcat_s(uchar* dst, uchar* src, uint dst_size)
 {
   uint j = 0;
-  uint i = strlen(dest);
-  while(src[j]!=0 && i+1<dest_size) {
-    dest[i] = src[j];
+  uint i = strlen(dst);
+  while(src[j]!=0 && i+1<dst_size) {
+    dst[i] = src[j];
     i++;
     j++;
   }
-  dest[i] = 0;
+  dst[i] = 0;
   return i;
 }
 
@@ -416,25 +419,28 @@ uint strchr(uchar* src, uchar c)
 }
 
 /*
- * Copy size bytes from src to dest
+ * Copy size bytes from src to dst
  */
-uint memcpy(uchar* dest, uchar* src, uint size)
+uint memcpy(uchar* dst, uchar* src, uint size)
 {
   uint i = 0;
+  uint rdir = (src>dst)?0:1;
+
   for(i=0; i<size; i++) {
-    dest[i] = src[i];
+    uint c = rdir?size-1-i:i;
+    dst[c] = src[c];
   }
   return i;
 }
 
 /*
- * Set size bytes from dest to value
+ * Set size bytes from dst to value
  */
-uint memset(uchar* dest, uchar value, uint size)
+uint memset(uchar* dst, uchar value, uint size)
 {
   uint i = 0;
   for(i=0; i<size; i++) {
-    dest[i] = value;
+    dst[i] = value;
   }
   return i;
 }
@@ -453,6 +459,73 @@ void* malloc(uint size)
 void mfree(void* ptr)
 {
   syscall(SYSCALL_MEM_FREE, ptr);
+}
+
+/*
+ * Copy size bytes from src to dest (far memory)
+ */
+uint32_t lmemcpy(lptr dst, uint32_t dst_offs, lptr src, uint32_t src_offs, uint32_t size)
+{
+  uint32_t i = 0;
+  uint rdir;
+  struct TSYSCALL_LMEM ldst;
+  struct TSYSCALL_LMEM lsrc;
+  lsrc.n = 0;
+
+  if(src+src_offs > dst+dst_offs) {
+    rdir = 0;
+  } else {
+    rdir = 1;
+  }
+
+  for(i=0; i<size; i++) {
+    lptr c = rdir ? size-(uint32_t)1-i : i;
+    lsrc.dst = src + src_offs + c;
+    ldst.dst = dst + dst_offs + c;
+    ldst.n = syscall(SYSCALL_LMEM_GET, &lsrc);
+    syscall(SYSCALL_LMEM_SET, &ldst);
+  }
+
+  return i;
+}
+
+/*
+ * Set size bytes from src to value (far memory)
+ */
+uint32_t lmemset(lptr dest, uchar value, uint32_t size)
+{
+  uint32_t i = 0;
+  struct TSYSCALL_LMEM lm;
+  lm.n = value;
+
+  for(i=0; i<size; i++) {
+    lm.dst = dest + i;
+    syscall(SYSCALL_LMEM_SET, &lm);
+  }
+  return i;
+}
+
+/*
+ * Allocate size bytes of contiguous far memory
+ */
+lptr lmalloc(uint32_t size)
+{
+  struct TSYSCALL_LMEM lm;
+  lm.dst = 0;
+  lm.n = size;
+  syscall(SYSCALL_LMEM_ALLOCATE, &lm);
+  return lm.dst;
+}
+
+/*
+ * Free allocated far memory
+ */
+void lmfree(lptr ptr)
+{
+  struct TSYSCALL_LMEM lm;
+  lm.dst = ptr;
+  lm.n = 0;
+  syscall(SYSCALL_LMEM_FREE, &lm);
 }
 
 /*
