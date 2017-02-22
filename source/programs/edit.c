@@ -21,23 +21,23 @@ static uint SCREEN_WIDTH = 80;
 static uint SCREEN_HEIGHT = 25;
 
 /*
- * Get first char of an extended memory string
- * Extended memory needs to be accessed thorugh its API
+ * Get first char of a far memory string.
+ * Far memory needs to be accessed thorugh its API
  */
-static uchar getexc(ex_ptr ptr)
+static uchar getlc(lptr ptr)
 {
   uchar c = 0;
-  exmemcpy((ex_ptr)&c, (uint32_t)0, ptr, (uint32_t)0, (uint32_t)1);
+  lmemcpy(lp(&c), (uint32_t)0, ptr, (uint32_t)0, (uint32_t)1);
   return c;
 }
 
 /*
- * Set a char of an extended memory string at a given offset
- * Extended memory needs to be accessed thorugh its API
+ * Set a char of a far memory string at a given offset
+ * Far memory needs to be accessed thorugh its API
  */
-static void setexc(ex_ptr ptr, uint32_t offset, uchar c)
+static void setlc(lptr ptr, uint32_t offset, uchar c)
 {
-  exmemcpy(ptr, offset, (ex_ptr)&c, (uint32_t)0, (uint32_t)1);
+  lmemcpy(ptr, offset, lp(&c), (uint32_t)0, (uint32_t)1);
 }
 
 /*
@@ -49,16 +49,16 @@ static void setexc(ex_ptr ptr, uint32_t offset, uchar c)
  * - shown at given screen_y if mode==SHOW_CURRENT
  * - just skipped if mode==SKIP_CURRENT
  */
-static ex_ptr next_line(uint mode, uint screen_y, ex_ptr line)
+static lptr next_line(uint mode, uint screen_y, lptr line)
 {
   uint x = 0;
 
   /* Process string until next line or end of string
    * and show text if needed
    */
-  while(line && getexc(line) && getexc(line)!='\n' && x<SCREEN_WIDTH) {
+  while(line && getlc(line) && getlc(line)!='\n' && x<SCREEN_WIDTH) {
     if(mode == SHOW_CURRENT) {
-      putchar_attr(x++, screen_y, getexc(line), EDITOR_ATTRIBUTES);
+      putchar_attr(x++, screen_y, getlc(line), EDITOR_ATTRIBUTES);
     }
     line++;
   }
@@ -69,7 +69,7 @@ static ex_ptr next_line(uint mode, uint screen_y, ex_ptr line)
   }
 
   /* Advance until next line begins */
-  if(line && getexc(line) == '\n') {
+  if(line && getlc(line) == '\n') {
     line++;
   }
 
@@ -81,22 +81,22 @@ static ex_ptr next_line(uint mode, uint screen_y, ex_ptr line)
  * number of line of buffer.
  * It's recommended to hide cursor before calling this function
  */
-void show_buffer_at_line(ex_ptr buff, uint n)
+void show_buffer_at_line(lptr buff, uint n)
 {
   uint l = 0;
 
   /* Skip buffer until required line number */
-  while(l<n && getexc(buff)) {
+  while(l<n && getlc(buff)) {
     buff = next_line(SKIP_CURRENT, 0, buff);
     l++;
   }
 
   /* Show required buffer lines */
   for(l=1; l<SCREEN_HEIGHT; l++) {
-    if(getexc(buff)) {
+    if(getlc(buff)) {
       buff = next_line(SHOW_CURRENT, l, buff);
     } else {
-      next_line(SHOW_CURRENT, l, (ex_ptr)0);
+      next_line(SHOW_CURRENT, l, (lptr)0);
     }
   }
 }
@@ -105,14 +105,14 @@ void show_buffer_at_line(ex_ptr buff, uint n)
  * Convert linear buffer offset (uint offset)
  * to line and col (output params)
  */
-void buffer_offset_to_linecol(ex_ptr buff, uint32_t offset, uint* col, uint* line)
+void buffer_offset_to_linecol(lptr buff, uint32_t offset, uint* col, uint* line)
 {
   *col = 0;
   *line = 0;
 
-  for(; offset>0 && getexc(buff); offset--, buff++) {
+  for(; offset>0 && getlc(buff); offset--, buff++) {
 
-    if(getexc(buff) == '\n') {
+    if(getlc(buff) == '\n') {
       (*line)++;
       *col = 0;
     } else {
@@ -130,19 +130,19 @@ void buffer_offset_to_linecol(ex_ptr buff, uint32_t offset, uint* col, uint* lin
  * Converts line and col (input params) to
  * linear buffer offset (return value)
  */
-uint32_t linecol_to_buffer_offset(ex_ptr buff, uint col, uint line)
+uint32_t linecol_to_buffer_offset(lptr buff, uint col, uint line)
 {
   uint32_t offset = 0;
-  while(getexc(buff) && line>0) {
-    if(getexc(buff) == '\n') {
+  while(getlc(buff) && line>0) {
+    if(getlc(buff) == '\n') {
       line--;
     }
     offset++;
     buff++;
   }
 
-  while(getexc(buff) && col>0) {
-    if(getexc(buff) == '\n') {
+  while(getlc(buff) && col>0) {
+    if(getlc(buff) == '\n') {
       break;
     }
     col--;
@@ -164,13 +164,13 @@ uint main(uint argc, uchar* argv[])
   uint   n = 0;
   uint   result = 0;
 
-  /* buff is fixed size and allocated in extended memory
-   * so it can be big enough.
+  /* buff is fixed size and allocated in far memory so it
+   * can be big enough.
    * buff_size is the size in bytes actually used in buff
    * buff_cursor_offset is the linear offset of current
    * cursor position inside buff
    */
-  ex_ptr   buff = 0;
+  lptr     buff = 0;
   uint32_t buff_size = 0;
   uint32_t buff_cursor_offset = 0;
 
@@ -195,7 +195,7 @@ uint main(uint argc, uchar* argv[])
   }
 
   /* Allocate fixed size buffer */
-  buff = exmalloc((uint32_t)0xFFFF);
+  buff = lmalloc((uint32_t)0xFFFF);
   if(buff == 0) {
     putstr("Error: can't allocate memory\n\r");
     return 1;
@@ -208,26 +208,26 @@ uint main(uint argc, uchar* argv[])
   if(n<ERROR_ANY && (entry.flags & FST_FILE)) {
     uint32_t offset = 0;
     uchar cbuff[512];
-    setexc(buff, entry.size, 0);
+    setlc(buff, entry.size, 0);
     buff_size = entry.size;
     while(result = read_file(cbuff, argv[1], (uint)offset, sizeof(cbuff))) {
       if(result >= ERROR_ANY) {
-        exmfree(buff);
+        lmfree(buff);
         putstr("Can't read file %s (error=%x)\n\r", argv[1], result);
         return 1;
       }
-      exmemcpy(buff, offset, (ex_ptr)cbuff, (uint32_t)0, (uint32_t)result);
+      lmemcpy(buff, offset, lp(cbuff), (uint32_t)0, (uint32_t)result);
       offset += result;
     }
     if(offset != entry.size) {
-      exmfree(buff);
+      lmfree(buff);
       putstr("Can't read file (readed %d bytes, expected %d)\n\r",
         (uint)offset, entry.size);
       return 1;
     }
     /* Buffer must finish with a 0 and */
     /* must fit at least this 0, so buff_size can't be 0 */
-    if(buff_size == 0 || getexc(buff + buff_size-(ex_ptr)1) != 0) {
+    if(buff_size == 0 || getlc(buff + buff_size-(lptr)1) != 0) {
       buff_size++;
     }
   }
@@ -236,7 +236,7 @@ uint main(uint argc, uchar* argv[])
   /* This byte is for the final 0 */
   if(buff_size == 0) {
     buff_size = 1;
-    exmemset(buff, 0, buff_size);
+    lmemset(buff, 0, buff_size);
   }
 
   /* Get screen size */
@@ -265,20 +265,26 @@ uint main(uint argc, uchar* argv[])
     uint col, line;
 
     /* Get key press */
-    k  = getkey();
+    k  = getkey(WAIT_KEY);
     kh = getHI(k);
     kl = getLO(k);
 
     /* Process key actions */
 
+    /* Keys to ignore */
+    if((kh>=KEY_HI_F1 && kh<=KEY_HI_F10) ||
+      kh==KEY_HI_F11 || kh==KEY_HI_F12 ||
+      kh==KEY_HI_PRT_SC || kh==KEY_HI_INS) {
+        continue;
+
     /* Key F1: Save */
-    if(kh == KEY_HI_F1) {
+    } else if(kh == KEY_HI_F1) {
       uint32_t offset = 0;
       uchar cbuff[512];
       result = 0;
       while(offset<buff_size && result<ERROR_ANY) {
         uint32_t to_copy = min(sizeof(cbuff), buff_size-offset);
-        exmemcpy((ex_ptr)cbuff, (uint32_t)0, buff, offset, to_copy);
+        lmemcpy(lp(cbuff), (uint32_t)0, buff, offset, to_copy);
         result = write_file(cbuff, argv[1], (uint)offset, (uint)to_copy, FWF_CREATE | FWF_TRUNCATE);
         offset += to_copy;
       }
@@ -311,11 +317,32 @@ uint main(uint argc, uchar* argv[])
         buff_cursor_offset++;
       }
 
+    /* HOME, END, PG_UP and PG_DN keys */
+    } else if(kh == KEY_HI_HOME) {
+      buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
+      col = 0;
+      buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
+
+    } else if(kh == KEY_HI_END) {
+      buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
+      col = 0xFFFF;
+      buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
+
+    } else if(kh == KEY_HI_PG_DN) {
+      buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
+      line += SCREEN_HEIGHT-1;
+      buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
+
+    } else if(kh == KEY_HI_PG_UP) {
+      buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
+      line -= min(line, SCREEN_HEIGHT-1);
+      buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
+
 
     /* Backspace key: delete char before cursor and move cursor there */
     } else if(kl == KEY_LO_BACKSPACE) {
       if(buff_cursor_offset > 0) {
-        exmemcpy(buff, buff_cursor_offset-1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
+        lmemcpy(buff, buff_cursor_offset-1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
         buff_size--;
         putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
         buff_cursor_offset--;
@@ -324,7 +351,7 @@ uint main(uint argc, uchar* argv[])
     /* Del key: delete char at cursor */
     } else if(kh == KEY_HI_DEL) {
       if(buff_cursor_offset < buff_size-1) {
-        exmemcpy(buff, buff_cursor_offset, buff, buff_cursor_offset+1, buff_size-buff_cursor_offset-1);
+        lmemcpy(buff, buff_cursor_offset, buff, buff_cursor_offset+1, buff_size-buff_cursor_offset-1);
         buff_size--;
         putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
       }
@@ -335,8 +362,11 @@ uint main(uint argc, uchar* argv[])
       if(kl == KEY_LO_RETURN) {
         kl = '\n';
       }
-      exmemcpy(buff, buff_cursor_offset+1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
-      setexc(buff, buff_cursor_offset++, kl);
+      if(kh == KEY_HI_TAB) {
+        kl = ' ';
+      }
+      lmemcpy(buff, buff_cursor_offset+1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
+      setlc(buff, buff_cursor_offset++, kl);
       buff_size++;
       putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
     }
@@ -357,7 +387,7 @@ uint main(uint argc, uchar* argv[])
   }
 
   /* Free buffer */
-  exmfree(buff);
+  lmfree(buff);
 
   /* Reset screen */
   clear_screen();

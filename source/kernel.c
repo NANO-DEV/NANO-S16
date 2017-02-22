@@ -33,7 +33,7 @@ typedef uint extern_main(uint argc, uchar* argv[]);
  * Heap related
  */
 #define HEAP_MAX_BLOCK   0x0080U
-#define HEAP_MEM_SIZE    0x4000U
+#define HEAP_MEM_SIZE    0x2000U
 #define HEAP_BLOCK_SIZE  (HEAP_MEM_SIZE / HEAP_MAX_BLOCK)
 
 static uchar HEAPADDR[HEAP_MEM_SIZE]; /* Allocate heap memory */
@@ -114,62 +114,62 @@ static heap_free(void* ptr)
   return;
 }
 
-#define EXMEM_START 0x00010000
-#define EXMEM_LIMIT 0x00110000
-#define EXMEM_BLOCK_SIZE 0x10
-#define EXMEM_MAX_BLOCK 128
-struct EXMEMBLOCK {
-  ex_ptr   start;
+#define LMEM_START 0x00010000
+#define LMEM_LIMIT 0x00110000
+#define LMEM_BLOCK_SIZE 0x10
+#define LMEM_MAX_BLOCK 64
+struct LMEMBLOCK {
+  lptr     start;
   uint32_t size;
-} ex_mem[EXMEM_MAX_BLOCK];
+} lmem[LMEM_MAX_BLOCK];
 
 /*
- * Init extended memory: all blocks are unused
+ * Init far memory: all blocks are unused
  */
-static void exmem_init()
+static void lmem_init()
 {
-  memset(&ex_mem, 0, sizeof(ex_mem));
+  memset(&lmem, 0, sizeof(lmem));
 }
 
 /*
- * Allocate extended memory
+ * Allocate far memory
  */
-static ex_ptr exmem_alloc(uint32_t size)
+static lptr lmem_alloc(uint32_t size)
 {
-  ex_ptr start = 0;
+  lptr start = 0;
   uint i;
 
   /* If size is 0 or all blocks are used, return */
-  if(size==0 || ex_mem[EXMEM_MAX_BLOCK-1].size!=0) {
+  if(size==0 || lmem[LMEM_MAX_BLOCK-1].size!=0) {
     return 0;
   }
 
   /* Align blocks to 16 bytes */
-  size += size % (uint32_t)EXMEM_BLOCK_SIZE;
+  size += size % (uint32_t)LMEM_BLOCK_SIZE;
 
   /* Find a continuous big enough free space */
-  for(i=0; i<EXMEM_MAX_BLOCK; i++) {
+  for(i=0; i<LMEM_MAX_BLOCK; i++) {
     /* If this block is allocated */
-    if(ex_mem[i].start) {
+    if(lmem[i].start) {
       /* If there are no more blocks, set not found and break */
-      if(i == EXMEM_MAX_BLOCK - 1) {
+      if(i == LMEM_MAX_BLOCK-1) {
         start = 0;
         break;
       }
       /* A possible start is at the end of this block */
-      start = ex_mem[i].start + ex_mem[i].size;
+      start = lmem[i].start + lmem[i].size;
       /* If there is enough space, break */
-      if(ex_mem[i+1].start==0 || ex_mem[i+1].start>start+size) {
+      if(lmem[i+1].start==0 || lmem[i+1].start>start+size) {
         i++; /* The right place for the new block is after current block */
         break;
       }
     } else {
       /* Next blocks are free. If it's the first, set start address */
       if(start == 0) {
-        start = (ex_ptr)EXMEM_START;
+        start = (lptr)LMEM_START;
       }
       /* Set not found if there isn't enough space */
-      if((ex_ptr)EXMEM_LIMIT-start < size) {
+      if((lptr)LMEM_LIMIT-start < size) {
         start = 0;
       }
       break;
@@ -179,38 +179,38 @@ static ex_ptr exmem_alloc(uint32_t size)
   /* Found if start != 0 */
   if(start != 0) {
     /* Allocate block at i */
-    memcpy(&ex_mem[i+1], &ex_mem[i],
-      (EXMEM_MAX_BLOCK-i-1)*sizeof(struct EXMEMBLOCK));
+    memcpy(&lmem[i+1], &lmem[i],
+      (LMEM_MAX_BLOCK-i-1)*sizeof(struct LMEMBLOCK));
 
-    ex_mem[i].start = start;
-    ex_mem[i].size = size;
+    lmem[i].start = start;
+    lmem[i].size = size;
     return start;
   }
 
   /* Error: not found */
-  debugstr("EXMem alloc: BAD ALLOC (%U bytes)\n\r", size);
+  debugstr("LMem alloc: BAD ALLOC (%U bytes)\n\r", size);
   return 0;
 }
 
 /*
- * Free memory in extended memory
+ * Free far memory
  */
-static void exmem_free(ex_ptr ptr)
+static void lmem_free(lptr ptr)
 {
   uint i = 0;
   if(ptr != 0) {
-    while(i<EXMEM_MAX_BLOCK) {
+    while(i<LMEM_MAX_BLOCK) {
       /* Find block */
-      if(ex_mem[i].start == ptr) {
+      if(lmem[i].start == ptr) {
         /* Free block */
-        ex_mem[i].start = 0;
-        ex_mem[i].size = 0;
+        lmem[i].start = 0;
+        lmem[i].size = 0;
 
         /* Keep list ordered and contiguous */
-        memcpy(&ex_mem[i], &ex_mem[i+1],
-          (EXMEM_MAX_BLOCK-i-1)*sizeof(struct EXMEMBLOCK));
-        ex_mem[EXMEM_MAX_BLOCK-1].start = 0;
-        ex_mem[EXMEM_MAX_BLOCK-1].size = 0;
+        memcpy(&lmem[i], &lmem[i+1],
+          (LMEM_MAX_BLOCK-i-1)*sizeof(struct LMEMBLOCK));
+        lmem[LMEM_MAX_BLOCK-1].start = 0;
+        lmem[LMEM_MAX_BLOCK-1].size = 0;
       } else {
         i++;
       }
@@ -282,8 +282,14 @@ uint kernel_service(uint service, void* param)
       return 0;
     }
 
-    case SYSCALL_IO_IN_KEY:
-      return io_in_key();
+    case SYSCALL_IO_IN_KEY: {
+      uint mode = (uint)*param;
+      uint c;
+      do {
+        c = io_in_key();
+      } while(c==0 && mode==WAIT_KEY);
+      return c;
+    }
 
     case SYSCALL_IO_OUT_CHAR_SERIAL:
       io_out_char_serial((uchar)*param);
@@ -305,23 +311,23 @@ uint kernel_service(uint service, void* param)
       heap_free(param);
       return 0;
 
-    case SYSCALL_EXMEM_ALLOCATE: {
-      struct TSYSCALL_EXMEM* ex = param;
-      ex->dst = exmem_alloc(ex->n);
+    case SYSCALL_LMEM_ALLOCATE: {
+      struct TSYSCALL_LMEM* lm = param;
+      lm->dst = lmem_alloc(lm->n);
       return 0;
     }
-    case SYSCALL_EXMEM_FREE: {
-      struct TSYSCALL_EXMEM* ex = param;
-      exmem_free(ex->dst);
+    case SYSCALL_LMEM_FREE: {
+      struct TSYSCALL_LMEM* lm = param;
+      lmem_free(lm->dst);
       return 0;
     }
-    case SYSCALL_EXMEM_GET: {
-      struct TSYSCALL_EXMEM* ex = param;
-      return exmem_getbyte(ex->dst);
+    case SYSCALL_LMEM_GET: {
+      struct TSYSCALL_LMEM* lm = param;
+      return lmem_getbyte(lm->dst);
     }
-    case SYSCALL_EXMEM_SET: {
-      struct TSYSCALL_EXMEM* ex = param;
-      exmem_setbyte(ex->dst, (uchar)ex->n);
+    case SYSCALL_LMEM_SET: {
+      struct TSYSCALL_LMEM* lm = param;
+      lmem_setbyte(lm->dst, (uchar)lm->n);
       return 0;
     }
 
@@ -457,8 +463,8 @@ void kernel()
   /* Init heap */
   heap_init();
 
-  /* Init extended memory */
-  exmem_init();
+  /* Init far memory */
+  lmem_init();
 
   /* Init FS info */
   fs_init_info();
@@ -473,7 +479,6 @@ void kernel()
     uchar  str[72];
     uchar* tok = str;
     uchar* nexttok = tok;
-    ex_ptr test;
 
     memset(str, 0, sizeof(str));
     memset(argv, 0, sizeof(argv));
@@ -644,7 +649,7 @@ void kernel()
       /* Info command: show system info */
       if(argc == 1) {
         putstr("\n\r");
-        putstr("NANO S16 [Version 2.0 build 6]\n\r");
+        putstr("NANO S16 [Version 2.0 build 7]\n\r");
         putstr("\n\r");
 
         putstr("Disks:\n\r");
@@ -706,7 +711,7 @@ void kernel()
         /* Ask for confirmation */
         putstr("\n\r");
         putstr("Press 'y' to confirm: ");
-        if(getLO(getkey()) != 'y') {
+        if(getLO(getkey(WAIT_KEY)) != 'y') {
           putstr("\n\rUser aborted operation\n\r");
           continue;
         }
@@ -809,6 +814,15 @@ void kernel()
         putstr("usage: time\n\r");
       }
 
+    } else if(strcmp(argv[0], "shutdown") == 0) {
+      /* Shutdown command: Shutdown computer */
+      if(argc == 1) {
+        apm_shutdown();
+        putstr("This computer does not support APM\n\r");
+      } else {
+        putstr("usage: shutdown\n\r");
+      }
+
     } else if(strcmp(argv[0], "config") == 0) {
       /* Time command: Show date and time */
       if(argc == 1) {
@@ -845,6 +859,7 @@ void kernel()
         putstr("makedir  - create directory\n\r");
         putstr("move     - move file or directory\n\r");
         putstr("read     - show file contents in screen\n\r");
+        putstr("shutdown - shutdown the computer\n\r");
         putstr("time     - show time and date\n\r");
         putstr("\n\r");
       } else if(argc == 2 &&  /* Easter egg */
@@ -870,15 +885,14 @@ void kernel()
     } else {
       /* Not a built-in command */
       /* Try to find an executable file */
-
+      uchar* prog_ext = ".bin";
       struct SFS_ENTRY entry;
       uchar prog_file_name[32];
       strcpy_s(prog_file_name, argv[0], sizeof(prog_file_name));
 
       /* Append .bin if there is not a '.' in the name*/
-      if(!strchr(prog_file_name, '.') &&
-        strlen(prog_file_name) < 28) {
-        strcat(prog_file_name, ".bin");
+      if(!strchr(prog_file_name, '.')) {
+        strcat_s(prog_file_name, prog_ext, sizeof(prog_file_name));
       }
 
       /* Find .bin file */
@@ -901,8 +915,8 @@ void kernel()
         extern_main* m = EXTERN_PROGRAM_MEMLOC;
 
         /* Check name ends with ".bin" */
-        if(strcmp(&prog_file_name[strchr(prog_file_name, '.') - 1], ".bin")) {
-          putstr("error: only .bin files can be executed\n\r");
+        if(strcmp(&prog_file_name[strchr(prog_file_name, '.') - 1], prog_ext)) {
+          putstr("error: only %s files can be executed\n\r", prog_ext);
           continue;
         }
 

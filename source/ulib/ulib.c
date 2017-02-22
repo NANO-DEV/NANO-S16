@@ -230,16 +230,19 @@ void set_show_cursor(uint mode)
  */
 uchar getchar()
 {
-  uint c = syscall(SYSCALL_IO_IN_KEY, 0);
+  uint c = 0;
+  while(c == 0) {
+    c = syscall(SYSCALL_IO_IN_KEY, 0);
+  }
   return (uchar)(c & 0x00FF);
 }
 
 /*
  * Get key press
  */
-uint getkey()
+uint getkey(uint mode)
 {
-  return syscall(SYSCALL_IO_IN_KEY, 0);
+  return syscall(SYSCALL_IO_IN_KEY, &mode);
 }
 
 /*
@@ -459,15 +462,15 @@ void mfree(void* ptr)
 }
 
 /*
- * Copy size bytes from src to dest
+ * Copy size bytes from src to dest (far memory)
  */
-uint32_t exmemcpy(ex_ptr dst, uint32_t dst_offs, ex_ptr src, uint32_t src_offs, uint32_t size)
+uint32_t lmemcpy(lptr dst, uint32_t dst_offs, lptr src, uint32_t src_offs, uint32_t size)
 {
   uint32_t i = 0;
   uint rdir;
-  struct TSYSCALL_EXMEM ex_dst;
-  struct TSYSCALL_EXMEM ex_src;
-  ex_src.n = 0;
+  struct TSYSCALL_LMEM ldst;
+  struct TSYSCALL_LMEM lsrc;
+  lsrc.n = 0;
 
   if(src+src_offs > dst+dst_offs) {
     rdir = 0;
@@ -476,53 +479,53 @@ uint32_t exmemcpy(ex_ptr dst, uint32_t dst_offs, ex_ptr src, uint32_t src_offs, 
   }
 
   for(i=0; i<size; i++) {
-    ex_ptr c = rdir ? size-(uint32_t)1-i : i;
-    ex_src.dst = src + src_offs + c;
-    ex_dst.dst = dst + dst_offs + c;
-    ex_dst.n = syscall(SYSCALL_EXMEM_GET, &ex_src);
-    syscall(SYSCALL_EXMEM_SET, &ex_dst);
+    lptr c = rdir ? size-(uint32_t)1-i : i;
+    lsrc.dst = src + src_offs + c;
+    ldst.dst = dst + dst_offs + c;
+    ldst.n = syscall(SYSCALL_LMEM_GET, &lsrc);
+    syscall(SYSCALL_LMEM_SET, &ldst);
   }
 
   return i;
 }
 
 /*
- * Set size bytes from src to value
+ * Set size bytes from src to value (far memory)
  */
-uint32_t exmemset(ex_ptr dest, uchar value, uint32_t size)
+uint32_t lmemset(lptr dest, uchar value, uint32_t size)
 {
   uint32_t i = 0;
-  struct TSYSCALL_EXMEM ex;
-  ex.n = value;
+  struct TSYSCALL_LMEM lm;
+  lm.n = value;
 
   for(i=0; i<size; i++) {
-    ex.dst = dest + i;
-    syscall(SYSCALL_EXMEM_SET, &ex);
+    lm.dst = dest + i;
+    syscall(SYSCALL_LMEM_SET, &lm);
   }
   return i;
 }
 
 /*
- * Allocate size bytes of contiguous extended memory
+ * Allocate size bytes of contiguous far memory
  */
-ex_ptr exmalloc(uint32_t size)
+lptr lmalloc(uint32_t size)
 {
-  struct TSYSCALL_EXMEM ex;
-  ex.dst = 0;
-  ex.n = size;
-  syscall(SYSCALL_EXMEM_ALLOCATE, &ex);
-  return (ex_ptr)ex.dst;
+  struct TSYSCALL_LMEM lm;
+  lm.dst = 0;
+  lm.n = size;
+  syscall(SYSCALL_LMEM_ALLOCATE, &lm);
+  return lm.dst;
 }
 
 /*
- * Free allocated extended memory
+ * Free allocated far memory
  */
-void exmfree(ex_ptr ptr)
+void lmfree(lptr ptr)
 {
-  struct TSYSCALL_EXMEM ex;
-  ex.dst = ptr;
-  ex.n = 0;
-  syscall(SYSCALL_EXMEM_FREE, &ex);
+  struct TSYSCALL_LMEM lm;
+  lm.dst = ptr;
+  lm.n = 0;
+  syscall(SYSCALL_LMEM_FREE, &lm);
 }
 
 /*

@@ -165,14 +165,14 @@ void set_show_cursor(uint mode);
 /*
  * Special key codes
  *
- * getkey() function returns an uint
+ * getkey(...) function returns an uint
  * To check a KEY_LO_ code, compare lower byte
  * To check a KEY_HI_ code, compare higher byte
  * Alphanumeric and usual symbol keys are mapped to the
  * lower byte, and their key code is their char code.
  * Example:
  *
- * uint k = getkey();
+ * uint k = getkey(NO_WAIT);
  * if(getHI(k) == KEY_HI_DEL) ...
  * if(getLO(k) == 'a') ...
  */
@@ -213,9 +213,13 @@ void set_show_cursor(uint mode);
 uchar getchar();
 
 /*
- * Get key press. Blocking function
+ * Get key press. Returns 0 if there aren't new key presses
+ * on buffer and NO_WAIT mode is set. Otherwise waits until
+ * there is a new keypress in buffer
  */
-uint getkey();
+#define NO_WAIT  0
+#define WAIT_KEY 1
+uint getkey(uint mode);
 
 /*
  * Get a string from user. Returns when RETURN key is
@@ -312,55 +316,62 @@ void* malloc(uint size);
  */
 void mfree(void* ptr);
 
-/* EXTENDED MEMORY
+/* FAR MEMORY
  *
- * The extended memory is more abundant (almost 1MB) than conventional memory,
- * but it must be always managed by the kernel:
+ * The far pointers (or long pointers, lptr) allow access to more than 1MB,
+ * while near memory pointers do it only for 64KB. Vars and malloc allocations
+ * are usually allocated in near memory and can be used in a conventional way.
+ * Conversely, far memory must be always managed by the kernel:
  *
- * - It's private to user programs, and can't be accessed by kernel, and so,
- *     used as buffer for system calls, except for these calls explicitly
- *     created to manage it.
- * - While the compiler does not understand it, it can't be accessed by the
- *     usual way (pointer[offset] = value  : is not allowed). It can only be
- *     accessed using exmemcpy and exmemset functions.
- * - To copy from/to conventional memory, use extended memory functions and
- *     explicitly cast conventional memory pointers to ex_ptr.
+ * - Since the compiler does not "understand" far pointers, they can't be
+ *     used where near or conventional pointers are expected, like most
+ *     system calls.
+ * - Since the compiler does not "understand" far pointers, they can't be
+ *     accessed by the usual way (pointer[offset] = value  : is not allowed).
+ *     They can only be accessed using lmemcpy and lmemset functions.
+ * - To copy far memory from/to near memory, use far memory functions and lp()
+ *     function to cast near memory pointers to lptr.
  *
  * Example:
  *
- * uchar cbuff[128];
- * ex_ptr  xbuff = exmalloc(128);
+ * uchar cbuff[128];            // Conventional near memory
+ * lptr  xbuff = lmalloc(128);  // Long pointer, far memory
  *
  * // xbuff[0] = cbuff[0];  NOT ALLOWED
  * // cbuff[0] = xbuff[0];  NOT ALLOWED
  * // write(xbuff, ...); NOT ALLOWED. Instead, copy first to cbuff
  *
- * exmemcpy(xbuff, 0, (ex_ptr)cbuff, 0, sizeof(buff)); // This is right
- * exmemcpy((ex_ptr)cbuff, 0, xbuff, 0, sizeof(buff)); // This is right
+ * lmemcpy(xbuff, 0, lp(cbuff), 0, sizeof(buff)); // This is right
+ * lmemcpy(lp(cbuff), 0, xbuff, 0, sizeof(buff)); // This is right
  *
- * exmfree(xbuff);
+ * lmfree(xbuff);
  */
 
 /*
- * Copy size bytes from src[src_offs] to dst[dst_offs] (extended memory)
+ * Convert pointer to lptr
  */
-uint32_t exmemcpy(ex_ptr dst, uint32_t dst_offs,
-  ex_ptr src, uint32_t src_offs, uint32_t size);
+lptr lp(void* ptr);
 
 /*
- * Set size bytes from src to value (extended memory)
+ * Copy size bytes from src[src_offs] to dst[dst_offs] (far memory)
  */
-uint32_t exmemset(ex_ptr dst, uchar value, uint32_t size);
+uint32_t lmemcpy(lptr dst, uint32_t dst_offs,
+  lptr src, uint32_t src_offs, uint32_t size);
+
+/*
+ * Set size bytes from src to value (far memory)
+ */
+uint32_t lmemset(lptr dst, uchar value, uint32_t size);
 
 
 /*
- * Allocate size bytes of contiguous extended memory
+ * Allocate size bytes of contiguous far memory
  */
-ex_ptr exmalloc(uint32_t size);
+lptr lmalloc(uint32_t size);
 /*
- * Free allocated extended memory
+ * Free allocated far memory
  */
-void exmfree(ex_ptr ptr);
+void lmfree(lptr ptr);
 
 
 /*

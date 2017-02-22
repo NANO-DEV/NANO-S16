@@ -55,7 +55,7 @@ extern void io_get_cursor_pos(uint* x, uint* y);
  */
 extern void io_set_cursor_pos(uint x, uint y);
 /*
- * Get keystroke
+ * Get keystroke, returns 0 if no pressed keys in buffer
  */
 extern uint io_in_key();
 /*
@@ -79,12 +79,24 @@ extern uint write_disk_sector(uint disk, uint sector, uint n, uchar* buff);
  */
 extern void get_time(uchar* BDCtime, uchar* date);
 /*
- * Set extended memory byte
+ * Set far memory byte
  */
-extern void exmem_setbyte(ex_ptr addr, uchar b);
+extern void lmem_setbyte(lptr addr, uchar b);
 /*
- * Get extended memory byte
+ * Get far memory byte
  */
-extern uchar exmem_getbyte(ex_ptr addr);
+extern uchar lmem_getbyte(lptr addr);
+/*
+ * Write byte to port
+ */
+void outb(uchar value, uint port);
+/*
+ * Read byte from port
+ */
+uchar inb(uint port);
+/*
+ * Power off system using APM
+ */
+extern void apm_shutdown();
 
 #endif   /* _HWx86_H */

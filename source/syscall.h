@@ -21,10 +21,10 @@
 #define SYSCALL_IO_OUT_CHAR_DEBUG       0x0038
 #define SYSCALL_MEM_ALLOCATE            0x0040
 #define SYSCALL_MEM_FREE                0x0041
-#define SYSCALL_EXMEM_ALLOCATE          0x0048
-#define SYSCALL_EXMEM_FREE              0x0049
-#define SYSCALL_EXMEM_GET               0x004A
-#define SYSCALL_EXMEM_SET               0x004B
+#define SYSCALL_LMEM_ALLOCATE           0x0048
+#define SYSCALL_LMEM_FREE               0x0049
+#define SYSCALL_LMEM_GET                0x004A
+#define SYSCALL_LMEM_SET                0x004B
 #define SYSCALL_FS_GET_INFO             0x0050
 #define SYSCALL_FS_GET_ENTRY            0x0051
 #define SYSCALL_FS_READ_FILE            0x0052
@@ -94,8 +94,8 @@ struct TSYSCALL_POSITION {
   uint*                py;
 };
 
-struct TSYSCALL_EXMEM {
-  ex_ptr               dst;
+struct TSYSCALL_LMEM {
+  lptr               dst;
   uint32_t             n;
 };
 
