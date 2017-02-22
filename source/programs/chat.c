@@ -16,7 +16,7 @@ uint main(uint argc, uchar* argv[]) {
   uchar data;
   uchar* dataStr = malloc(2);
   uint len;
-  uint i;
+  uint key;
 
   iBuffer[0] = 0;
   oBuffer[0] = 0;
@@ -31,44 +31,32 @@ uint main(uint argc, uchar* argv[]) {
   putstr("*** Joined! After the 10 seconds of waitting, you can send your message (Or press ENTER / Q)\n\r");
 
   while(1) {
-    i = 0;
-    iBuffer[0] = 0;
-
     // Receive
-    while(i < 10) {
-      data = sgetchar();
 
-      if (data == 0) {
-        i++;
-      }
-      else {
-        i = 0;
-      }
+    data = sgetchar();
 
-      if (data == 59) {// Entire (Ends with ";")
-        putstr("\n\r%s", iBuffer);
-        iBuffer[0] = 0;
-      }
-      else {// Fragment
-        len = strlen(iBuffer);
-
-        if (data != 0) {
-          iBuffer[len] = data;
-          iBuffer[len + 1] = 0;
-        }
-      }
+    if (data == 59) {// Entire (Ends with ";")
+      putstr("\n\r%s\n\r", iBuffer);
+      iBuffer[0] = 0;
     }
-    putstr("\n\r");
+    else if (data != 0) { {// Fragment
+      len = strlen(iBuffer);
+
+      iBuffer[len] = data;
+      iBuffer[len + 1] = 0;
+    }
 
     // Send
-    putchar(43);
-    getstr(oBuffer, BUFFER_LEN);
+
+    key = getkey(NO_WAIT);// oBuffer, BUFFER_LEN
+
     if (oBuffer[0] == 81) {// Exit
       return 1;
     }
     else if (strlen(oBuffer) > 0) {
       sputstr("%s: %s;", nick, oBuffer);
     }
+
     oBuffer[0] = 0;
   }
 
