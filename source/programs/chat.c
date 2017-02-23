@@ -1,5 +1,6 @@
 /*
 * NANO-Chat
+* Version 0.2
 * By Jonatan Linares.
 */
 
@@ -16,19 +17,21 @@ uint main(uint argc, uchar* argv[]) {
   uchar data;
   uchar* dataStr = malloc(2);
   uint len;
+  uint rKey;
   uint key;
+  uint i;
 
   iBuffer[0] = 0;
   oBuffer[0] = 0;
 
   putstr("NANO-Chat\n\r");
-  putstr("v0.1\n\r");
+  putstr("v0.2\n\r");
   putstr("---------\n\r");
 
   putstr("*** What's your name?\n\r");
   getstr(nick, NICK_LEN);
 
-  putstr("*** Joined! After the 10 seconds of waitting, you can send your message (Or press ENTER / Q)\n\r");
+  putstr("*** Joined! (ESC to exit)\n\r\n\r");
 
   while(1) {
     // Receive
@@ -36,10 +39,16 @@ uint main(uint argc, uchar* argv[]) {
     data = sgetchar();
 
     if (data == 59) {// Entire (Ends with ";")
-      putstr("\n\r%s\n\r", iBuffer);
+      if (oBuffer[0] != 0) {
+        putstr("\n\r");
+      }
+
+      putstr("%s\n\r", iBuffer);
       iBuffer[0] = 0;
+
+      putstr("%s", oBuffer);
     }
-    else if (data != 0) { {// Fragment
+    else if (data != 0) {// Fragment
       len = strlen(iBuffer);
 
       iBuffer[len] = data;
@@ -47,17 +56,33 @@ uint main(uint argc, uchar* argv[]) {
     }
 
     // Send
+    
+    for(i = 0; i < 50000; i++) {
+      rKey = getkey(NO_WAIT);// oBuffer, BUFFER_LEN
+      key = getLO(rKey);
 
-    key = getkey(NO_WAIT);// oBuffer, BUFFER_LEN
+      if (key == KEY_LO_ESC) {// Exit
+        putstr("\n\rThanks for chatting. Bye!\n\r\n\r");
 
-    if (oBuffer[0] == 81) {// Exit
-      return 1;
+        return 1;
+      }
+      else if (key == KEY_LO_RETURN) {// Entire ("Enter" pressed)
+        if (oBuffer[0] != 0) {
+          putstr("\n\r");
+
+          sputstr("%s: %s;", nick, oBuffer);
+          oBuffer[0] = 0;
+        }
+      }
+      else if (key != 0) {// Fragment
+        putchar(key);
+
+        len = strlen(oBuffer);
+
+        oBuffer[len] = key;
+        oBuffer[len + 1] = 0;
+      }
     }
-    else if (strlen(oBuffer) > 0) {
-      sputstr("%s: %s;", nick, oBuffer);
-    }
-
-    oBuffer[0] = 0;
   }
 
   return 0;
