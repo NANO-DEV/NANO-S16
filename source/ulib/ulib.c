@@ -230,10 +230,8 @@ void set_show_cursor(uint mode)
  */
 uchar getchar()
 {
-  uint c = 0;
-  while(c == 0) {
-    c = syscall(SYSCALL_IO_IN_KEY, 0);
-  }
+  uint c = KM_WAIT_KEY;
+  c = syscall(SYSCALL_IO_IN_KEY, &c);
   return (uchar)(c & 0x00FF);
 }
 
@@ -250,32 +248,80 @@ uint getkey(uint mode)
  */
 uint getstr(uchar* str, uint max_count)
 {
+  uint x, y;
   uint i = 0;
+  uint k;
+  uint p;
 
-  while(1) {
-    uint c = getchar();
-    if(c == KEY_LO_RETURN) {
-      putchar('\n');
-      putchar('\r');
-      break;
-    }
-    if(c == KEY_LO_BACKSPACE) {
+  /* Reset string */
+  memset(str, 0, max_count);
+
+  /* Clear keyboard buffer */
+  getkey(KM_CLEAR_BUFFER);
+
+  /* Get cursor position and show it */
+  get_cursor_position(&x, &y);
+  set_show_cursor(SHOW_CURSOR);
+
+  do {
+    /* Get a key press (wait for it)*/
+    k = getkey(KM_WAIT_KEY);
+
+    /* Backspace */
+    if(k == KEY_BACKSPACE) {
       if(i > 0) {
+        memcpy(&str[i-1], &str[i], max_count-i);
         i--;
-        str[i] = 0;
-        putchar(KEY_LO_BACKSPACE);
-        putchar(0);
-        putchar(KEY_LO_BACKSPACE);
       }
-    } else if(c>=32 && c<=126 && i+1<max_count) {
-      str[i] = c;
-      putchar(str[i]);
-      i++;
-    }
-  }
-  str[i] = 0;
 
-  return i;
+    /* Delete */
+  } else if(k == KEY_DEL) {
+      if(i < max_count-1) {
+        memcpy(&str[i], &str[i+1], max_count-i-1);
+      }
+
+    /* Return */
+  } else if(k == KEY_RETURN) {
+      break;
+
+    /* Cursor movement keys */
+  } else if(k == KEY_LEFT && i>0) {
+      i--;
+    } else if(k == KEY_RIGHT && i<strlen(str)) {
+      i++;
+    } else if(k == KEY_HOME) {
+      i = 0;
+    } else if(k == KEY_END) {
+      i = strlen(str);
+
+    /* Not a useful key and not an allowed char */
+  } else if(k!=KEY_TAB && (k<0x20 || k>0x7E)) {
+      continue;
+
+    /* Append char to string */
+    } else if(strlen(str) < max_count-1) {
+      memcpy(&str[i+1], &str[i], max_count-i-2);
+      str[i++] = getLO(k);
+    }
+
+    /* Now hide cursor and redraw string at initial position */
+    set_show_cursor(HIDE_CURSOR);
+    set_cursor_position(x, y);
+    for(p=0; p<max_count; p++) {
+      putchar(str[p]);
+    }
+
+    /* Reset cursor */
+    set_cursor_position(x+i, y);
+    set_show_cursor(SHOW_CURSOR);
+  } while(k != KEY_RETURN);
+
+  /* Done. Print new line */
+  str[max_count-1] = 0;
+  putchar('\n');
+  putchar('\r');
+
+  return strlen(str);
 }
 
 /*
@@ -644,4 +690,14 @@ uint format(uint disk)
 void time(struct TIME* t)
 {
   syscall(SYSCALL_CLK_GET_TIME, t);
+}
+
+/*
+ * Get system timer, miliseconds
+ */
+uint32_t get_timer()
+{
+  uint32_t timer_ms;
+  syscall(SYSCALL_CLK_GET_MILISEC, &timer_ms);
+  return timer_ms;
 }

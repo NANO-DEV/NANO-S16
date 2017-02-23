@@ -175,10 +175,12 @@ The easiest way to develop new user programs is:
      }
      ```
 3. Edit this line of `source/Makefile` and add `$(PROGDIR)programname.bin` at the end, like this:
+
     ```
     programs: $(PROGDIR)edit.bin $(PROGDIR)programname.bin
     ```
 4. Edit this line of `Makefile` and add `$(SOURCEDIR)programs/programname.bin` at the end, like this:
+    
     ```
     USERFILES := $(SOURCEDIR)programs/edit.bin $(SOURCEDIR)programs/programname.bin
     ```

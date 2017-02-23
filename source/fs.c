@@ -9,6 +9,9 @@
 #include "ulib/ulib.h"
 
 
+uint32_t last_floppy_access = 0;
+
+
 /*
  * See fs.h for more detailed description
  * of file system and functions
@@ -200,6 +203,11 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
     memcpy(&buff[i], aux_buff, buff_size);
   }
 
+  /* Update floppy access timer */
+  if(disk == 0x00 || disk == 0x01) {
+    last_floppy_access = get_timer();
+  }
+
   if(result != 0) {
     debugstr("Read disk error (%x)\n\r", result);
   }
@@ -286,6 +294,11 @@ static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar
     result += read_disk_sector(disk, sector, 1, aux_buff);
     memcpy(aux_buff, &buff[i], buff_size);
     result += write_disk_sector(disk, sector, 1, aux_buff);
+  }
+
+  /* Update floppy access timer */
+  if(disk == 0x00 || disk == 0x01) {
+    last_floppy_access = get_timer();
   }
 
   if(result != 0) {

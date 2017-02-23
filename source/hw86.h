@@ -75,6 +75,10 @@ extern uint read_disk_sector(uint disk, uint sector, uint n, uchar* buff);
  */
 extern uint write_disk_sector(uint disk, uint sector, uint n, uchar* buff);
 /*
+ * Turn off floppy motors
+ */
+extern void turn_off_floppy_motors();
+/*
  * Get system time
  */
 extern void get_time(uchar* BDCtime, uchar* date);
@@ -94,6 +98,14 @@ void outb(uchar value, uint port);
  * Read byte from port
  */
 uchar inb(uint port);
+/*
+ * Initialize timer (PIT)
+ */
+void timer_init(uint32_t freq);
+/*
+ * Initialize PIC
+ */
+void PIC_init();
 /*
  * Power off system using APM
  */

@@ -96,6 +96,10 @@ _io_out_char:
 
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+6]       ; Get char from string
+  cmp  al, 0x09         ; Special '\t' case
+  jne  .print
+  mov  al, 0x20         ; Replace '\t' with a space
+.print:
   mov  bx, 0x01
   mov  ah, 0x0E         ; int 10h teletype function
   int  0x10             ; Print it
@@ -127,6 +131,10 @@ _io_out_char_attr:
   ; Print char
   mov  bx, sp
   mov  al, [bx+14]
+  cmp  al, 0x09         ; Special '\t' case
+  jne  .print
+  mov  al, 0x20         ; Replace '\t' with a space
+.print:
   mov  bl, [bx+16]
   mov  ah, 9
   mov  bh, 0
@@ -249,8 +257,11 @@ _io_get_cursor_pos:
   mov  bx, sp
   mov  bx, [bx+8]
   mov  byte [bx], dl
+  mov  byte [bx+1], 0
+  mov  bx, sp
   mov  bx, [bx+10]
   mov  byte [bx], dh
+  mov  byte [bx+1], 0
 
   pop  dx
   pop  bx
@@ -353,6 +364,7 @@ _get_time:
 global _read_disk_sector
 _read_disk_sector:
   pusha
+  cli
 
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+18]
@@ -396,12 +408,14 @@ _read_disk_sector:
   jmp  .read_failure    ; Fatal double error
 
 .read_finished:
+  sti
   popa                  ; Restore registers from main loop
   popa                  ; And restore from start of this system call
   mov  ax, 0            ; Return 0 (for success)
   ret
 
 .read_failure:
+  sti
   mov  [.n], ax
   popa
   popa
@@ -409,11 +423,30 @@ _read_disk_sector:
   ret
 
 .param_failure:
+  sti
   popa
   mov  ax, 1
   ret
 
 .n dw 0
+
+
+;
+; void turn_off_floppy_motors()
+; Since IRQ0 is overwritten, this must be done manually
+;
+global _turn_off_floppy_motors
+_turn_off_floppy_motors:
+  push ax
+  push dx
+
+  mov  dx, 3F2h
+  mov  al, 0
+  out  dx, al
+
+  pop  dx
+  pop  ax
+  ret
 
 
 ;
@@ -423,6 +456,7 @@ _read_disk_sector:
 global _write_disk_sector
 _write_disk_sector:
   pusha
+  cli
 
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+18]
@@ -449,17 +483,20 @@ _write_disk_sector:
 
   jc   .write_failure
 
+  sti
   popa                  ; And restore from start of this system call
   mov  ax, 0            ; Return 0 (for success)
   ret
 
 .write_failure:
+  sti
   mov  [.n], ax
   popa
   mov  ax, [.n]         ; Return error code
   ret
 
 .param_failure:
+  sti
   popa
   mov  ax, 1
   ret
@@ -527,6 +564,7 @@ struc DISKINFO
   .sides      resw 1
   .cylinders  resw 1
   .disk_size  resw 2
+  .last_accss resw 2
   .size:
 endstruc
 
@@ -548,6 +586,8 @@ set_disk_params:
   mov  [dsects], bx
   mov  bx, [_disk_info + eax + DISKINFO.sides]
   mov  [dsides], bx
+  mov  ebx, [_system_timer_ms]
+  mov  [_disk_info + eax + DISKINFO.last_accss], ebx
 
   popa
   ret
@@ -563,6 +603,7 @@ extern _disk_info
 global _get_disk_info
 _get_disk_info:
   pusha
+  cli
 
   clc
   mov  bx, sp           ; Save the stack pointer
@@ -606,11 +647,13 @@ _get_disk_info:
   mov  bx, ax
   mov  [bx], cx
 
+  sti
   popa
   mov  ax, 0
   ret
 
 .error:
+  sti
   popa
   mov  ax, 1
   ret
@@ -717,6 +760,142 @@ _inb:
   pop  bx
   ret
 
+; All PIT related:
+; http://wiki.osdev.org/Programmable_Interval_Timer
+;
+; void timer_init(uint32_t freq)
+; Init PIT
+; freq = desired PIT frequency in Hz
+;
+global _timer_init
+_timer_init:
+  pushad
+
+  mov  eax, 0
+  mov  bx, sp
+  mov  ax, [bx+32+2]
+  mov  ebx, eax
+
+  ; Check input freq
+  mov  eax, 0x10000     ; eax = reload value for slowest possible frequency (65536)
+  cmp  ebx, 18          ; If freq is too low, use slowest possible frequency
+  jbe  .gotReloadValue
+
+  mov  eax, 1           ; ax = reload value for fastest possible frequency (1)
+  cmp  ebx, 1193181     ; If freq is too high, use fastest possible frequency
+  jae  .gotReloadValue
+
+  ; Calculate the reload value
+  mov  eax, 3579545
+  mov  edx, 0           ; edx:eax = 3579545
+  div  ebx              ; eax = 3579545 / frequency, edx = remainder
+  cmp  edx, 3579545/2   ; Is the remainder more than half?
+  jb   .l1              ; no, round down
+  inc  eax              ; yes, round up
+.l1:
+  mov  ebx, 3
+  mov  edx, 0           ; edx:eax = 3579545 * 256 / frequency
+  div  ebx              ; eax = (3579545 * 256 / 3 * 256) / frequency
+  cmp  edx, 3/2         ; Is the remainder more than half?
+  jb   .l2              ; no, round down
+  inc  eax              ; yes, round up
+.l2:
+
+; Store the reload value and calculate the actual frequency
+.gotReloadValue:
+  push eax              ; Store reload_value for later
+  mov  [PIT_reload_value], ax ; Store the reload value for later
+  mov  ebx, eax         ; ebx = reload value
+
+  mov  eax, 3579545
+  mov  edx, 0           ; edx:eax = 3579545
+  div  ebx              ; eax = 3579545 / reload_value, edx = remainder
+  cmp  edx, 3579545/2   ; Is the remainder more than half?
+  jb   .l3              ; no, round down
+  inc  eax              ; yes, round up
+.l3:
+  mov  ebx, 3
+  mov  edx, 0           ; edx:eax = 3579545 / reload_value
+  div  ebx              ; eax = (3579545 / 3) / frequency
+  cmp  edx, 3/2         ; Is the remainder more than half?
+  jb   .l4              ; no, round down
+  inc  eax              ; yes, round up
+.l4:
+  mov  [_IRQ0_frequency], eax ; Store the actual frequency for displaying later
+
+; Calculate the amount of time between IRQs in 32.32 fixed point
+;
+; Note: The basic formula is:
+;           time in ms = reload_value / (3579545 / 3) * 1000
+;       This can be rearranged in the follow way:
+;           time in ms = reload_value * 3000 / 3579545
+;           time in ms = reload_value * 3000 / 3579545 * (2^42)/(2^42)
+;           time in ms = reload_value * 3000 * (2^42) / 3579545 / (2^42)
+;           time in ms * 2^32 = reload_value * 3000 * (2^42) / 3579545 / (2^42) * (2^32)
+;           time in ms * 2^32 = reload_value * 3000 * (2^42) / 3579545 / (2^10)
+
+  pop  ebx              ; ebx = reload_value
+  mov  eax, 0xDBB3A062  ; eax = 3000 * (2^42) / 3579545
+  mul  ebx              ; edx:eax = reload_value * 3000 * (2^42) / 3579545
+  shrd eax, edx, 10
+  shr  edx, 10          ; edx:eax = reload_value * 3000 * (2^42) / 3579545 / (2^10)
+
+  mov  [IRQ0_ms], edx   ; Set whole ms between IRQs
+  mov  [IRQ0_fractions], eax  ; Set fractions of 1 ms between IRQs
+
+; Program the PIT channel
+  pushfd
+  cli                   ; Disabled interrupts (just in case)
+
+  mov  al, 00110100b    ; channel 0, lobyte/hibyte, rate generator
+  out  0x43, al
+
+  mov  ax, [PIT_reload_value] ; ax = 16 bit reload value
+  out  0x40, al         ; Set low byte of PIT reload value
+  mov  al, ah           ; ax = high 8 bits of reload value
+  out  0x40, al         ; Set high byte of PIT reload value
+
+  popfd
+
+  popad
+  ret
+
+PIT_reload_value dw 0 ; Current PIT reload value
+IRQ0_fractions   dd 0 ; Fractions of 1 ms between IRQs
+IRQ0_ms          dd 0 ; Number of whole ms between IRQs
+system_timer_fractions dd 0 ; Fractions of 1 ms since timer initialized
+extern _IRQ0_frequency, _system_timer_ms
+
+;
+; Handler for the IRQ0
+; Used by timer (PIT)
+;
+IRQ0_handler:
+	pushad
+  pushfd
+
+  cli
+  cld
+	mov  eax, [IRQ0_fractions]
+  mov  ebx, [IRQ0_ms]                ; eax.ebx = amount of time between IRQs
+  add  [system_timer_fractions], eax ; Update system timer tick fractions
+  adc  [_system_timer_ms], ebx       ; Update system timer tick milli-seconds
+
+;  mov  ax, cs                        ; Reset segments ¿What happens?
+;  mov  ds, ax
+;  mov  es, ax
+;  mov  ss, ax
+  call _kernel_time_tick
+
+  mov  al, PIC_EOI
+  out  PORT_MPIC_COMMAND, al         ; Send the EOI to the PIC
+
+  popfd
+	popad
+
+	iret
+
+  extern _kernel_time_tick
 
 ;
 ; void apm_shutdown()
@@ -745,32 +924,111 @@ _apm_shutdown:
 
 
 ;
+; void PIC_init()
+; Initialize PIC
+;
+PORT_MPIC_COMMAND equ 0x20
+PORT_MPIC_DATA equ 0x21
+PORT_SPIC_COMMAND equ 0xA0
+PORT_SPIC_DATA equ 0xA1
+
+PIC_EOI equ 0x20 ; End-of-interrupt command code
+
+ICW1_ICW4	equ 0x01		; ICW4 (not) needed
+ICW1_SINGLE	equ 0x02		; Single (cascade) mode
+ICW1_INTERVAL4 equ 0x04		; Call address interval 4 (8)
+ICW1_LEVEL equ 0x08		; Level triggered (edge) mode
+ICW1_INIT equ 0x10		; Initialization - required!
+
+ICW4_8086 equ 0x01		; 8086/88 (MCS-80/85) mode
+ICW4_AUTO equ 0x02		; Auto (normal) EOI
+ICW4_BUF_SLAVE equ 0x08		; Buffered mode/slave
+ICW4_BUF_MASTER equ 0x0C		; Buffered mode/master
+ICW4_SFNM equ 0x10		; Special fully nested (not)
+
+global _PIC_init
+_PIC_init:
+  pusha
+  cli
+
+  ; Save masks
+  in   al, PORT_MPIC_DATA   ; a1 = inb(PIC1_DATA);
+  push ax
+  in   al, PORT_SPIC_DATA   ; a2 = inb(PIC2_DATA);
+  push ax
+
+  ; Starts the initialization sequence (in cascade mode)
+  mov  al, ICW1_INIT+ICW1_ICW4
+  out  PORT_MPIC_COMMAND, al ; outb(PIC1_COMMAND, ICW1_INIT+ICW1_ICW4);
+	out  PORT_SPIC_COMMAND, al ; outb(PIC2_COMMAND, ICW1_INIT+ICW1_ICW4);
+
+  ; PIC vector offsets
+  mov  al, 0x08
+	out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, offset1);
+  mov  al, 0x70
+	out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, offset2);
+
+
+  ; ICW3: tell Master PIC that there is a slave PIC at IRQ2 (0000 0100)
+  mov  al, 4
+	out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, 4);
+  ; ICW3: tell Slave PIC its cascade identity (0000 0010)
+  mov  al, 2
+	out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, 2);
+
+  mov  al, ICW4_8086
+	out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, ICW4_8086);
+	out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, ICW4_8086);
+
+  ; Restore masks
+	pop  ax
+  out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, a2);
+  pop  ax
+  out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, a1);
+
+  sti
+  popa
+  ret
+
+;
 ; Install IRS
 ;
 ;
-INT_CODE equ 0x70
+INT_CODE_SYSCALL equ 0x70
+INT_CODE_MPIC_BASE equ 0x08
+
 global _install_ISR
 _install_ISR:
   cli                   ; hardware interrupts are now stopped
-  xor  ax, ax
+  mov  ax, 0
   mov  es, ax
-  mov  bx, [es:INT_CODE*4]
 
-  ; add routine to interrupt vector table
-  mov  dx, _ISR
-  mov  [es:INT_CODE*4], dx
+  ; add routine to interrupt vector table (SYSCALL)
+  mov  dx, SYS_ISR
+  mov  [es:INT_CODE_SYSCALL*4], dx
   mov  ax, cs
-  mov  [es:INT_CODE*4+2], ax
-  sti
+  mov  [es:INT_CODE_SYSCALL*4+2], ax
 
+  ; add routine to interrupt vector table (IRQ0)
+  mov  dx, IRQ0_handler
+  mov  [es:INT_CODE_MPIC_BASE*4], dx
+  mov  ax, cs
+  mov  [es:INT_CODE_MPIC_BASE*4+2], ax
+
+  ; Set IRQ0 (PIC PIT timer) unmasked
+  in   al, PORT_MPIC_DATA ; Get current mask
+  and  al, 11111110     ; Unmask IRQ0
+  out  PORT_MPIC_DATA, al
+
+  sti
   ret
 
 
 ;
-; IRS
-; Interrput Service Routine
+; SYS_ISR
+; Syscall Interrput Service Routine
 ;
-_ISR:
+SYS_ISR:
   pushad
   cld                   ; clear on function entry
   push cx

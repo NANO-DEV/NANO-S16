@@ -14,6 +14,9 @@ uint serial_debug = 0; /* Debug info through serial port */
 
 uchar a20_enabled = 0; /* A20 line enabled */
 
+uint32_t IRQ0_frequency = 0; /* Actual frequency of timer */
+uint32_t system_timer_ms = 0; /* ms since timer initialized */
+
 uint screen_width  = 80; /* Screen size (text mode) */
 uint screen_height = 50;
 
@@ -284,11 +287,44 @@ uint kernel_service(uint service, void* param)
 
     case SYSCALL_IO_IN_KEY: {
       uint mode = (uint)*param;
-      uint c;
+      uint k;
       do {
-        c = io_in_key();
-      } while(c==0 && mode==WAIT_KEY);
-      return c;
+        k = io_in_key();
+      } while((k==0 && mode==KM_WAIT_KEY) ||
+        (k!=0 && mode==KM_CLEAR_BUFFER));
+
+      if(k != 0) {
+        if(getHI(k)==(KEY_DEL    >> 8) ||
+           getHI(k)==(KEY_END    >> 8) ||
+           getHI(k)==(KEY_DEL    >> 8) ||
+           getHI(k)==(KEY_HOME   >> 8) ||
+           getHI(k)==(KEY_INS    >> 8) ||
+           getHI(k)==(KEY_PG_DN  >> 8) ||
+           getHI(k)==(KEY_PG_UP  >> 8) ||
+           getHI(k)==(KEY_PRT_SC >> 8) ||
+           getHI(k)==(KEY_UP     >> 8) ||
+           getHI(k)==(KEY_LEFT   >> 8) ||
+           getHI(k)==(KEY_RIGHT  >> 8) ||
+           getHI(k)==(KEY_DOWN   >> 8) ||
+           getHI(k)==(KEY_F1     >> 8) ||
+           getHI(k)==(KEY_F2     >> 8) ||
+           getHI(k)==(KEY_F3     >> 8) ||
+           getHI(k)==(KEY_F4     >> 8) ||
+           getHI(k)==(KEY_F5     >> 8) ||
+           getHI(k)==(KEY_F6     >> 8) ||
+           getHI(k)==(KEY_F7     >> 8) ||
+           getHI(k)==(KEY_F8     >> 8) ||
+           getHI(k)==(KEY_F9     >> 8) ||
+           getHI(k)==(KEY_F10    >> 8) ||
+           getHI(k)==(KEY_F11    >> 8) ||
+           getHI(k)==(KEY_F12    >> 8)) {
+          k &= 0xFF00;
+        } else {
+          k &= 0x00FF;
+        }
+      }
+
+      return k;
     }
 
     case SYSCALL_IO_OUT_CHAR_SERIAL:
@@ -400,9 +436,33 @@ uint kernel_service(uint service, void* param)
       t->day    = BCD_to_int(BCDdate[2]);
       return 0;
     }
+
+    case SYSCALL_CLK_GET_MILISEC: {
+      uint32_t* timer_ms = param;
+      *timer_ms = system_timer_ms;
+      return 0;
+    }
   }
 
   return 0;
+}
+
+/*
+ * Called each time the system timer advances
+ */
+void kernel_time_tick()
+{
+  /* Something is wrong when arriving here */
+/*  uint i;
+  for(i=0; i<2; i++) {
+    if(disk_info[i].last_access != 0 &&
+      system_timer_ms-disk_info[i].last_access > 3000) {
+        turn_off_floppy_motors();
+        disk_info[i].last_access = 0;
+        debugstr("Turned off floppy motors\n\r");
+      }
+    }*/
+  return;
 }
 
 /*
@@ -427,10 +487,10 @@ void kernel()
   disk_info[1].id = 0x01; /* Floppy disk 1 */
   strcpy_s(disk_info[1].name, "fd1", sizeof(disk_info[1].name));
 
-  disk_info[2].id = 0x80;   /* Hard disk 0 */
+  disk_info[2].id = 0x80; /* Hard disk 0 */
   strcpy_s(disk_info[2].name, "hd0", sizeof(disk_info[2].name));
 
-  disk_info[3].id = 0x81;   /* Hard disk 1 */
+  disk_info[3].id = 0x81; /* Hard disk 1 */
   strcpy_s(disk_info[3].name, "hd1", sizeof(disk_info[3].name));
 
   /* Initialize hardware related disks info */
@@ -447,6 +507,8 @@ void kernel()
         (uint32_t)disk_info[i].sides * (uint32_t)disk_info[i].cylinders) /
         ((uint32_t)1048576 / (uint32_t)BLOCK_SIZE);
 
+      disk_info[i].last_access = system_timer_ms;
+
       debugstr("DISK (%x : size=%U MB sect_per_track=%d, sides=%d, cylinders=%d)\n\r",
         n, disk_info[i].size, disk_info[i].sectors, disk_info[i].sides,
         disk_info[i].cylinders);
@@ -457,6 +519,7 @@ void kernel()
       disk_info[i].sides = 0;
       disk_info[i].cylinders = 0;
       disk_info[i].size = 0;
+      disk_info[i].last_access = 0;
     }
   }
 
@@ -469,6 +532,12 @@ void kernel()
   /* Init FS info */
   fs_init_info();
 
+  /* Init PIC */
+  PIC_init();
+
+  /* Init timer at 100 Hz */
+  timer_init(1000);
+
   putstr("Starting...\n\r");
   debugstr("Starting...\n\r");
 
@@ -480,6 +549,8 @@ void kernel()
     uchar* tok = str;
     uchar* nexttok = tok;
 
+    turn_off_floppy_motors(); /* This is a bad workaround */
+
     memset(str, 0, sizeof(str));
     memset(argv, 0, sizeof(argv));
 
@@ -487,7 +558,6 @@ void kernel()
     putstr("> ");
     getstr(str, sizeof(str));
     debugstr("> %s\n\r", str);
-
 
     /* Tokenize */
     argc = 0;
@@ -649,7 +719,7 @@ void kernel()
       /* Info command: show system info */
       if(argc == 1) {
         putstr("\n\r");
-        putstr("NANO S16 [Version 2.0 build 7]\n\r");
+        putstr("NANO S16 [Version 2.0 build 8]\n\r");
         putstr("\n\r");
 
         putstr("Disks:\n\r");
@@ -711,7 +781,7 @@ void kernel()
         /* Ask for confirmation */
         putstr("\n\r");
         putstr("Press 'y' to confirm: ");
-        if(getLO(getkey(WAIT_KEY)) != 'y') {
+        if(getkey(KM_WAIT_KEY) != 'y') {
           putstr("\n\rUser aborted operation\n\r");
           continue;
         }

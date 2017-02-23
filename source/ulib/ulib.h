@@ -166,45 +166,43 @@ void set_show_cursor(uint mode);
  * Special key codes
  *
  * getkey(...) function returns an uint
- * To check a KEY_LO_ code, compare lower byte
- * To check a KEY_HI_ code, compare higher byte
- * Alphanumeric and usual symbol keys are mapped to the
- * lower byte, and their key code is their char code.
+ * Alphanumeric and usual symbol key codes are their ASCII code.
+ * Special key values are specified here.
  * Example:
  *
- * uint k = getkey(NO_WAIT);
- * if(getHI(k) == KEY_HI_DEL) ...
- * if(getLO(k) == 'a') ...
+ * uint k = getkey(KM_NO_WAIT);
+ * if(k == KEY_DEL) ...
+ * if(k == 'a') ...
  */
-#define KEY_LO_BACKSPACE 0x08
-#define KEY_LO_RETURN    0x0D
-#define KEY_LO_ESC       0x1B
-#define KEY_HI_DEL       0x53
-#define KEY_HI_END       0x4F
-#define KEY_HI_HOME      0x47
-#define KEY_HI_INS       0x52
-#define KEY_HI_PG_DN     0x51
-#define KEY_HI_PG_UP     0x49
-#define KEY_HI_PRT_SC    0x72
-#define KEY_HI_TAB       0x0F
+#define KEY_BACKSPACE 0x0008
+#define KEY_RETURN    0x000D
+#define KEY_ESC       0x001B
+#define KEY_DEL       0x5300
+#define KEY_END       0x4F00
+#define KEY_HOME      0x4700
+#define KEY_INS       0x5200
+#define KEY_PG_DN     0x5100
+#define KEY_PG_UP     0x4900
+#define KEY_PRT_SC    0x7200
+#define KEY_TAB       0x0009
 
-#define KEY_HI_UP        0x48
-#define KEY_HI_LEFT      0x4B
-#define KEY_HI_RIGHT     0x4D
-#define KEY_HI_DOWN      0x50
+#define KEY_UP        0x4800
+#define KEY_LEFT      0x4B00
+#define KEY_RIGHT     0x4D00
+#define KEY_DOWN      0x5000
 
-#define KEY_HI_F1        0x3B
-#define KEY_HI_F2        0x3C
-#define KEY_HI_F3        0x3D
-#define KEY_HI_F4        0x3E
-#define KEY_HI_F5        0x3F
-#define KEY_HI_F6        0x40
-#define KEY_HI_F7        0x41
-#define KEY_HI_F8        0x42
-#define KEY_HI_F9        0x43
-#define KEY_HI_F10       0x44
-#define KEY_HI_F11       0x85
-#define KEY_HI_F12       0x86
+#define KEY_F1        0x3B00
+#define KEY_F2        0x3C00
+#define KEY_F3        0x3D00
+#define KEY_F4        0x3E00
+#define KEY_F5        0x3F00
+#define KEY_F6        0x4000
+#define KEY_F7        0x4100
+#define KEY_F8        0x4200
+#define KEY_F9        0x4300
+#define KEY_F10       0x4400
+#define KEY_F11       0x8500
+#define KEY_F12       0x8600
 
 /*
  * Get key press in a char. Blocking function.
@@ -213,18 +211,19 @@ void set_show_cursor(uint mode);
 uchar getchar();
 
 /*
- * Get key press. Returns 0 if there aren't new key presses
- * on buffer and NO_WAIT mode is set. Otherwise waits until
- * there is a new keypress in buffer
+ * Get pressed key code. If mode==KM_CLEAR_BUFFER clears the keyboard
+ * buffer and returns 0. If mode==KM_NO_WAIT and keyboard buffer is
+ * empty, returns 0. Otherwise, waits until there is a keypress in
+ * buffer and returns its key code
  */
-#define NO_WAIT  0
-#define WAIT_KEY 1
+#define KM_NO_WAIT      0
+#define KM_WAIT_KEY     1
+#define KM_CLEAR_BUFFER 2
 uint getkey(uint mode);
 
 /*
  * Get a string from user. Returns when RETURN key is
- * pressed or str contains max_count elements.
- * Unused str characters will be set to 0
+ * pressed. Unused str characters are set to 0.
  * Returns number of elements in str
  */
 uint getstr(uchar* str, uint max_count);
@@ -307,7 +306,9 @@ uint memset(uchar* dst, uchar value, uint size);
 
 
 /*
- * Allocate size bytes of contiguous memory
+ * Allocate size bytes of contiguous near memory.
+ * The near memory is very limited and mostly used for code.
+ * Use far memory (see below) when large amounts of memory are required.
  */
 void* malloc(uint size);
 
@@ -318,10 +319,14 @@ void mfree(void* ptr);
 
 /* FAR MEMORY
  *
- * The far pointers (or long pointers, lptr) allow access to more than 1MB,
- * while near memory pointers do it only for 64KB. Vars and malloc allocations
- * are usually allocated in near memory and can be used in a conventional way.
- * Conversely, far memory must be always managed by the kernel:
+ * This operating system uses a compact memory model: one code segment and
+ * multiple data segments.
+ *
+ * The far pointers (or long pointers, lptr) allow access to more than 1MB of
+ * data outside the code segment, while near memory pointers do it only for
+ * 64KB inside the code segment. Vars and malloc allocations are usually
+ * allocated in near memory and can be used in a conventional way. Conversely,
+ * far memory must be always managed by the kernel:
  *
  * - Since the compiler does not "understand" far pointers, they can't be
  *     used where near or conventional pointers are expected, like most
@@ -547,6 +552,11 @@ struct TIME {
  };
 
 void time(struct TIME* t);
+
+/*
+ * Get system timer, miliseconds
+ */
+uint32_t get_timer();
 
 
 

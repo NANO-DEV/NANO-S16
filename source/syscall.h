@@ -36,6 +36,7 @@
 #define SYSCALL_FS_LIST                 0x0058
 #define SYSCALL_FS_FORMAT               0x0059
 #define SYSCALL_CLK_GET_TIME            0x0060
+#define SYSCALL_CLK_GET_MILISEC         0x0061
 
 /*
  * Syscall param structs

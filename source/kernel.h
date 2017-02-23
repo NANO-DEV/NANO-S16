@@ -23,6 +23,7 @@ struct DISKINFO {
     uint     sides;
     uint     cylinders;
     uint32_t size;        /* Disk size (MB) */
+    uint32_t last_access; /* Last accessed time (system ms) */
 };
 
 extern struct DISKINFO disk_info[MAX_DISK]; /* Disks info */
@@ -31,7 +32,10 @@ extern uchar serial_status;  /* Serial port status */
 extern uchar a20_enabled; /* A20 line enabled */
 extern uint serial_debug; /* Debug info through serial port */
 
-extern uint screen_width;
-extern uint screen_height;
+extern uint screen_width; /* Screen width */
+extern uint screen_height; /* Screen height */
+
+extern uint32_t IRQ0_frequency; /* Actual frequency of timer */
+extern uint32_t system_timer_ms; /* Number of whole ms since timer initialized */
 
 #endif   /* _KERNEL_H */

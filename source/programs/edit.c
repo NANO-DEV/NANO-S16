@@ -177,10 +177,8 @@ uint main(uint argc, uchar* argv[])
   /* First line number to display in the editor area */
   uint   current_line = 0;
 
-  /* Vars to get key presses */
+  /* Var to get key presses */
   uint   k  = 0;
-  uint   kh = 0;
-  uint   kl = 0;
 
   struct FS_ENTRY entry;
 
@@ -261,24 +259,22 @@ uint main(uint argc, uchar* argv[])
   set_show_cursor(SHOW_CURSOR);
 
   /* Main loop */
-  while(kl != KEY_LO_ESC) {
+  while(k != KEY_ESC) {
     uint col, line;
 
     /* Get key press */
-    k  = getkey(WAIT_KEY);
-    kh = getHI(k);
-    kl = getLO(k);
+    k = getkey(KM_WAIT_KEY);
 
     /* Process key actions */
 
     /* Keys to ignore */
-    if((kh>=KEY_HI_F1 && kh<=KEY_HI_F10) ||
-      kh==KEY_HI_F11 || kh==KEY_HI_F12 ||
-      kh==KEY_HI_PRT_SC || kh==KEY_HI_INS) {
+    if((k>KEY_F1 && k<=KEY_F10) ||
+      k==KEY_F11 || k==KEY_F12 ||
+      k==KEY_PRT_SC || k==KEY_INS) {
         continue;
 
     /* Key F1: Save */
-    } else if(kh == KEY_HI_F1) {
+    } else if(k == KEY_F1) {
       uint32_t offset = 0;
       uchar cbuff[512];
       result = 0;
@@ -288,59 +284,63 @@ uint main(uint argc, uchar* argv[])
         result = write_file(cbuff, argv[1], (uint)offset, (uint)to_copy, FWF_CREATE | FWF_TRUNCATE);
         offset += to_copy;
       }
+
+      /* Update state indicator */
       if(result < ERROR_ANY) {
         putchar_attr(strlen(argv[1]), 0, ' ', TITLE_ATTRIBUTES);
       } else {
         putchar_attr(strlen(argv[1]), 0, '*', (TITLE_ATTRIBUTES&0xF0)|AT_T_RED);
       }
+      /* This opperation takes some time, so clear keyboard buffer */
+      getkey(KM_CLEAR_BUFFER);
 
     /* Cursor keys: Move cursor */
-    } else if(kh == KEY_HI_UP) {
+    } else if(k == KEY_UP) {
       buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
       if(line > 0) {
         line -= 1;
         buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
       }
 
-    } else if(kh == KEY_HI_DOWN) {
+    } else if(k == KEY_DOWN) {
       buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
       line += 1;
       buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
 
-    } else if(kh == KEY_HI_LEFT) {
+    } else if(k == KEY_LEFT) {
       if(buff_cursor_offset > 0) {
         buff_cursor_offset--;
       }
 
-    } else if(kh == KEY_HI_RIGHT) {
+    } else if(k == KEY_RIGHT) {
       if(buff_cursor_offset < buff_size - 1) {
         buff_cursor_offset++;
       }
 
     /* HOME, END, PG_UP and PG_DN keys */
-    } else if(kh == KEY_HI_HOME) {
+    } else if(k == KEY_HOME) {
       buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
       col = 0;
       buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
 
-    } else if(kh == KEY_HI_END) {
+    } else if(k == KEY_END) {
       buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
       col = 0xFFFF;
       buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
 
-    } else if(kh == KEY_HI_PG_DN) {
+    } else if(k == KEY_PG_DN) {
       buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
       line += SCREEN_HEIGHT-1;
       buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
 
-    } else if(kh == KEY_HI_PG_UP) {
+    } else if(k == KEY_PG_UP) {
       buffer_offset_to_linecol(buff, buff_cursor_offset, &col, &line);
       line -= min(line, SCREEN_HEIGHT-1);
       buff_cursor_offset = linecol_to_buffer_offset(buff, col, line);
 
 
     /* Backspace key: delete char before cursor and move cursor there */
-    } else if(kl == KEY_LO_BACKSPACE) {
+    } else if(k == KEY_BACKSPACE) {
       if(buff_cursor_offset > 0) {
         lmemcpy(buff, buff_cursor_offset-1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
         buff_size--;
@@ -349,7 +349,7 @@ uint main(uint argc, uchar* argv[])
       }
 
     /* Del key: delete char at cursor */
-    } else if(kh == KEY_HI_DEL) {
+    } else if(k == KEY_DEL) {
       if(buff_cursor_offset < buff_size-1) {
         lmemcpy(buff, buff_cursor_offset, buff, buff_cursor_offset+1, buff_size-buff_cursor_offset-1);
         buff_size--;
@@ -357,16 +357,16 @@ uint main(uint argc, uchar* argv[])
       }
 
     /* Any other key but esc: insert char at cursor */
-    } else if(kl != KEY_LO_ESC) {
+    } else if(k != KEY_ESC) {
 
-      if(kl == KEY_LO_RETURN) {
-        kl = '\n';
+      if(k == KEY_RETURN) {
+        k = '\n';
       }
-      if(kh == KEY_HI_TAB) {
-        kl = ' ';
+      if(k == KEY_TAB) {
+        k = '\t';
       }
       lmemcpy(buff, buff_cursor_offset+1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
-      setlc(buff, buff_cursor_offset++, kl);
+      setlc(buff, buff_cursor_offset++, k);
       buff_size++;
       putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
     }
