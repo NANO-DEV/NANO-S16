@@ -40,20 +40,20 @@ extern _sputstr
 ;
 global _io_set_text_mode
 _io_set_text_mode:
-push ax
-push bx
+  push ax
+  push bx
 
-mov  al, 0x03
-mov  ah, 0x00
-int  0x10
+  mov  al, 0x03
+  mov  ah, 0x00
+  int  0x10
 
-mov  ax, 0x1112       ; Use this to set 80x50 video mode
-mov  bl, 0
-int  0x10
+  mov  ax, 0x1112       ; Use this to set 80x50 video mode
+  mov  bl, 0
+  int  0x10
 
-pop  bx
-pop  ax
-ret
+  pop  bx
+  pop  ax
+  ret
 
 
 ;
@@ -191,7 +191,6 @@ _io_in_char_serial:
   mov  ah, 0x02         ; int 14h ah=02h: read
   int  0x14             ; Get it
 
-  ;mov byte [_serial_status], ah
   test byte ah, 0x80
   mov  ah, 0
   je   .skip
@@ -224,7 +223,6 @@ _io_hide_cursor:
 ; void io_show_cursor()
 ; Show the cursor in text mode using BIOS
 ;
-;
 global  _io_show_cursor
 _io_show_cursor:
   pusha
@@ -242,7 +240,6 @@ _io_show_cursor:
 ;
 ; void io_get_cursor_position(uint* x, uint* y)
 ; Get the cursor position
-;
 ;
 global  _io_get_cursor_pos
 _io_get_cursor_pos:
@@ -306,6 +303,7 @@ _io_in_key:
 
   mov  ah, 0x10         ; BIOS call to wait for key
   int  0x16             ; Since there is one in buffer, there is no wait
+  sti
   ret
 
 .no_key:                ; No key pressed, return 0
@@ -364,7 +362,6 @@ _get_time:
 global _read_disk_sector
 _read_disk_sector:
   pusha
-  cli
 
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+18]
@@ -408,14 +405,12 @@ _read_disk_sector:
   jmp  .read_failure    ; Fatal double error
 
 .read_finished:
-  sti
   popa                  ; Restore registers from main loop
   popa                  ; And restore from start of this system call
   mov  ax, 0            ; Return 0 (for success)
   ret
 
 .read_failure:
-  sti
   mov  [.n], ax
   popa
   popa
@@ -423,7 +418,6 @@ _read_disk_sector:
   ret
 
 .param_failure:
-  sti
   popa
   mov  ax, 1
   ret
@@ -435,8 +429,8 @@ _read_disk_sector:
 ; void turn_off_floppy_motors()
 ; Since IRQ0 is overwritten, this must be done manually
 ;
-global _turn_off_floppy_motors
-_turn_off_floppy_motors:
+global _turn_off_fd_motors
+_turn_off_fd_motors:
   push ax
   push dx
 
@@ -456,7 +450,6 @@ _turn_off_floppy_motors:
 global _write_disk_sector
 _write_disk_sector:
   pusha
-  cli
 
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+18]
@@ -483,20 +476,17 @@ _write_disk_sector:
 
   jc   .write_failure
 
-  sti
   popa                  ; And restore from start of this system call
   mov  ax, 0            ; Return 0 (for success)
   ret
 
 .write_failure:
-  sti
   mov  [.n], ax
   popa
   mov  ax, [.n]         ; Return error code
   ret
 
 .param_failure:
-  sti
   popa
   mov  ax, 1
   ret
@@ -559,12 +549,12 @@ struc DISKINFO
   .id         resw 1
   .name       resb 4
   .fstype     resw 1
-  .fssize     resw 2
+  .fssize     resd 1
   .sectors    resw 1
   .sides      resw 1
   .cylinders  resw 1
-  .disk_size  resw 2
-  .last_accss resw 2
+  .disk_size  resd 1
+  .last_accss resd 1
   .size:
 endstruc
 
@@ -597,13 +587,12 @@ extern _disk_info
 
 
 ;
-; uint get_disk_info(uint disk, uint* st, uint* hd, , uint* cl)
+; uint get_disk_info(uint disk, uint* st, uint* hd, uint* cl)
 ;
 ;
 global _get_disk_info
 _get_disk_info:
   pusha
-  cli
 
   clc
   mov  bx, sp           ; Save the stack pointer
@@ -647,13 +636,11 @@ _get_disk_info:
   mov  bx, ax
   mov  [bx], cx
 
-  sti
   popa
   mov  ax, 0
   ret
 
 .error:
-  sti
   popa
   mov  ax, 1
   ret
@@ -669,7 +656,6 @@ dsides dw 0             ; Current disk sides
 ;
 global _lmem_setbyte
 _lmem_setbyte:
-  cli
   push es
   push cx
   push bx
@@ -689,7 +675,6 @@ _lmem_setbyte:
   pop  bx
   pop  cx
   pop  es
-  sti
   ret
 
 
@@ -699,7 +684,6 @@ _lmem_setbyte:
 ;
 global _lmem_getbyte
 _lmem_getbyte:
-  cli
   push es
   push cx
   push bx
@@ -717,12 +701,11 @@ _lmem_getbyte:
   pop  bx
   pop  cx
   pop  es
-  sti
   ret
 
 
 ;
-; void outb(uchar value, uint port);
+; void outb(uchar value, uint port)
 ; write byte to port
 ;
 global _outb
@@ -743,7 +726,7 @@ _outb:
 
 
 ;
-; uchar inb(uint port);
+; uchar inb(uint port)
 ; Read byte from port
 ;
 global _inb
@@ -760,6 +743,47 @@ _inb:
   pop  bx
   ret
 
+
+;
+; void outb(uint value, uint port)
+; write word to port
+;
+global _outw
+_outw:
+  push ax
+  push bx
+  push dx
+
+	mov	 bx, sp
+	mov	 ax, [bx+8]
+	mov	 dx, [bx+10]
+	out	 dx, ax
+
+  pop  dx
+  pop  bx
+  pop  ax
+	ret
+
+
+;
+; uint inb(uint port)
+; Read word from port
+;
+global _inw
+_inw:
+  push bx
+  push dx
+
+  mov  ax, 0
+  mov	 bx, sp
+	mov	 dx, [bx+6]
+	in	 ax, dx
+
+	pop  dx
+  pop  bx
+  ret
+
+
 ; All PIT related:
 ; http://wiki.osdev.org/Programmable_Interval_Timer
 ;
@@ -770,6 +794,7 @@ _inb:
 global _timer_init
 _timer_init:
   pushad
+  push es
 
   mov  eax, 0
   mov  bx, sp
@@ -843,7 +868,7 @@ _timer_init:
   mov  [IRQ0_ms], edx   ; Set whole ms between IRQs
   mov  [IRQ0_fractions], eax  ; Set fractions of 1 ms between IRQs
 
-; Program the PIT channel
+  ; Program the PIT channel
   pushfd
   cli                   ; Disabled interrupts (just in case)
 
@@ -855,9 +880,24 @@ _timer_init:
   mov  al, ah           ; ax = high 8 bits of reload value
   out  0x40, al         ; Set high byte of PIT reload value
 
+  ; Add routine to interrupt vector table (IRQ0)
+  mov  ax, 0
+  mov  es, ax
+  mov  dx, IRQ0_handler
+  mov  [es:INT_CODE_MPIC_BASE*4], dx
+  mov  ax, cs
+  mov  [es:INT_CODE_MPIC_BASE*4+2], ax
+
+  ; Set IRQ0 (PIC PIT timer) unmasked
+  in   al, PORT_MPIC_DATA ; Get current mask
+  and  al, 11111110b     ; Unmask IRQ0
+  out  PORT_MPIC_DATA, al
+
   popfd
 
+  pop  es
   popad
+
   ret
 
 PIT_reload_value dw 0 ; Current PIT reload value
@@ -873,23 +913,29 @@ extern _IRQ0_frequency, _system_timer_ms
 IRQ0_handler:
 	pushad
   pushfd
+  push  ss
+  push  es
+  push  ds
 
   cli
-  cld
+  mov  ax, cs           ; Sometimes this is in an unknown state
+  mov  ds, ax           ; Still don't know why
+  mov  es, ax
+  mov  ss, ax
+
 	mov  eax, [IRQ0_fractions]
   mov  ebx, [IRQ0_ms]                ; eax.ebx = amount of time between IRQs
   add  [system_timer_fractions], eax ; Update system timer tick fractions
   adc  [_system_timer_ms], ebx       ; Update system timer tick milli-seconds
 
-;  mov  ax, cs                        ; Reset segments ¿What happens?
-;  mov  ds, ax
-;  mov  es, ax
-;  mov  ss, ax
   call _kernel_time_tick
 
   mov  al, PIC_EOI
   out  PORT_MPIC_COMMAND, al         ; Send the EOI to the PIC
 
+  pop  ds
+  pop  es
+  pop  ss
   popfd
 	popad
 
@@ -903,23 +949,59 @@ IRQ0_handler:
 ;
 global _apm_shutdown
 _apm_shutdown:
+  push ax
+  push bx
+  push cx
+  clc
+
+  ; Disconnect from any APM interface
+  mov  ax, 0x5304
+  mov  bx, 0
+  int  0x15
+  clc
+
+  ; Connect to real mode interface
   mov  ax, 0x5301
   mov  bx, 0
   int  0x15
   jc   .error
 
+  ; Enable power management
   mov  ax, 0x5308
   mov  bx, 0x0001
   mov  cx, 0x0001
   int  0x15
   jc   .error
 
+  ; Power off
   mov  ax, 0x5307
   mov  bx, 0x0001
   mov  cx, 0x0003
   int  0x15
 
 .error:
+  clc
+  pop  cx
+  pop  bx
+  pop  ax
+  ret
+
+
+;
+; void reboot()
+;	Reboot system
+;
+global _reboot
+_reboot:
+  push ax
+  push dx
+
+  mov  dx, 0x64         ; Use keyboard line
+  mov  al, 0xFE
+  out  dx, al
+
+  pop dx
+  pop ax
   ret
 
 
@@ -990,6 +1072,7 @@ _PIC_init:
   popa
   ret
 
+
 ;
 ; Install IRS
 ;
@@ -1009,17 +1092,6 @@ _install_ISR:
   mov  ax, cs
   mov  [es:INT_CODE_SYSCALL*4+2], ax
 
-  ; add routine to interrupt vector table (IRQ0)
-  mov  dx, IRQ0_handler
-  mov  [es:INT_CODE_MPIC_BASE*4], dx
-  mov  ax, cs
-  mov  [es:INT_CODE_MPIC_BASE*4+2], ax
-
-  ; Set IRQ0 (PIC PIT timer) unmasked
-  in   al, PORT_MPIC_DATA ; Get current mask
-  and  al, 11111110     ; Unmask IRQ0
-  out  PORT_MPIC_DATA, al
-
   sti
   ret
 
@@ -1030,13 +1102,14 @@ _install_ISR:
 ;
 SYS_ISR:
   pushad
-  cld                   ; clear on function entry
+
   push cx
   push ax
   call _kernel_service
   pop  cx
   pop  cx
   mov  [result], ax
+
   popad
   mov  ax, [result]
 

@@ -5,6 +5,10 @@
 #ifndef _KERNEL_H
 #define _KERNEL_H
 
+#define OS_VERSION_HI 2
+#define OS_VERSION_LO 0
+#define OS_BUILD_NUM 9
+
 /*
  * Hardware related disk information is handled by the kernel module.
  * File system related information is handled by file system module
@@ -13,6 +17,10 @@
 
 /* Size of a disk sector */
 #define SECTOR_SIZE 512
+
+/* We need this buffer to be inside a 64KB bound
+ * to avoid DMA error */
+extern uchar disk_buff[SECTOR_SIZE];
 
 struct DISKINFO {
     uint     id;          /* Disk id */

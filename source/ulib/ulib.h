@@ -554,7 +554,7 @@ struct TIME {
 void time(struct TIME* t);
 
 /*
- * Get system timer, miliseconds
+ * Get system alive time in miliseconds
  */
 uint32_t get_timer();
 

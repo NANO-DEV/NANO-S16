@@ -9,13 +9,14 @@
 #include "syscall.h"
 #include "fs.h"
 
-uchar serial_status;  /* Serial port status */
+uchar serial_status = 0;  /* Serial port status */
 uint serial_debug = 0; /* Debug info through serial port */
 
 uchar a20_enabled = 0; /* A20 line enabled */
 
 uint32_t IRQ0_frequency = 0; /* Actual frequency of timer */
-uint32_t system_timer_ms = 0; /* ms since timer initialized */
+uint32_t system_timer_ms = 10; /* ms since timer initialized */
+/* Initialize to 10 ms so all 0 timestamps are outdated */
 
 uint screen_width  = 80; /* Screen size (text mode) */
 uint screen_height = 50;
@@ -452,16 +453,20 @@ uint kernel_service(uint service, void* param)
  */
 void kernel_time_tick()
 {
-  /* Something is wrong when arriving here */
-/*  uint i;
+  /* Turn off floppy disk motors. Need to do this
+   * manually since some computers use the PIT to
+   * control this, but the PIT is now being used as
+   * system timer */
+  uint i;
   for(i=0; i<2; i++) {
     if(disk_info[i].last_access != 0 &&
       system_timer_ms-disk_info[i].last_access > 3000) {
-        turn_off_floppy_motors();
+        turn_off_fd_motors();
+        debugstr("Turn off floppy disk motors\n\r");
         disk_info[i].last_access = 0;
-        debugstr("Turned off floppy motors\n\r");
-      }
-    }*/
+      i++;
+    }
+  }
   return;
 }
 
@@ -494,6 +499,8 @@ void kernel()
   strcpy_s(disk_info[3].name, "hd1", sizeof(disk_info[3].name));
 
   /* Initialize hardware related disks info */
+  debugstr("Disk auxiliar buffer at: %x\n\r", disk_buff);
+
   for(i=0; i<MAX_DISK; i++) {
     n = index_to_disk(i);
 
@@ -536,7 +543,7 @@ void kernel()
   PIC_init();
 
   /* Init timer at 100 Hz */
-  timer_init(1000);
+  timer_init(100);
 
   putstr("Starting...\n\r");
   debugstr("Starting...\n\r");
@@ -549,15 +556,13 @@ void kernel()
     uchar* tok = str;
     uchar* nexttok = tok;
 
-    turn_off_floppy_motors(); /* This is a bad workaround */
-
     memset(str, 0, sizeof(str));
     memset(argv, 0, sizeof(argv));
 
     /* Prompt and wait command */
     putstr("> ");
     getstr(str, sizeof(str));
-    debugstr("> %s\n\r", str);
+    debugstr("%Ums> %s\n\r", system_timer_ms, str);
 
     /* Tokenize */
     argc = 0;
@@ -719,7 +724,8 @@ void kernel()
       /* Info command: show system info */
       if(argc == 1) {
         putstr("\n\r");
-        putstr("NANO S16 [Version 2.0 build 8]\n\r");
+        putstr("NANO S16 [Version %u.%u build %u]\n\r",
+          OS_VERSION_HI, OS_VERSION_LO, OS_BUILD_NUM);
         putstr("\n\r");
 
         putstr("Disks:\n\r");
@@ -736,6 +742,8 @@ void kernel()
         putstr("System disk: %s\n\r", disk_to_string(system_disk));
         putstr("Serial port status: %s\n\r", serial_status & 0x80 ? "Error" : "Enabled");
         putstr("A20 Line status: %s\n\r", a20_enabled ? "Enabled" : "Disabled");
+        putstr("Timer frequency: %UHz\n\r", IRQ0_frequency);
+        putstr("System time alive: %Ums\n\r", system_timer_ms);
         putstr("\n\r");
       } else {
         putstr("usage: info\n\r");
@@ -888,9 +896,17 @@ void kernel()
       /* Shutdown command: Shutdown computer */
       if(argc == 1) {
         apm_shutdown();
-        putstr("This computer does not support APM\n\r");
+
+        /* This computer does not support APM */
+        io_clear_screen();
+        io_hide_cursor();
+        putstr("Turn off computer\n\r");
+        break; /* Go to halt() */
+      } else if(argc == 2 && strcmp(argv[1], "reboot") == 0) {
+          reboot();  /* Reboot computer */
+          putstr("Reboot not supported\n\r");
       } else {
-        putstr("usage: shutdown\n\r");
+        putstr("usage: shutdown [reboot]\n\r");
       }
 
     } else if(strcmp(argv[0], "config") == 0) {
@@ -995,9 +1011,6 @@ void kernel()
 
         /* Run program */
         m(argc, argv);
-
-        /* Restore environment */
-        set_show_cursor(SHOW_CURSOR); /* The program could have hidden it */
       }
     }
   }

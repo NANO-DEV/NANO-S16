@@ -148,7 +148,12 @@ read documents/doc.txt
 ```
 
 ####SHUTDOWN
-Shutdown the computer.
+If called without arguments, shutdowns the computer or halts it if APM is not supported. If called with `reboot` argument, restarts the computer.
+
+Example:
+```
+shutdown reboot
+```
 
 ####TIME
 Show current date and time.
@@ -180,7 +185,7 @@ The easiest way to develop new user programs is:
     programs: $(PROGDIR)edit.bin $(PROGDIR)programname.bin
     ```
 4. Edit this line of `Makefile` and add `$(SOURCEDIR)programs/programname.bin` at the end, like this:
-    
+
     ```
     USERFILES := $(SOURCEDIR)programs/edit.bin $(SOURCEDIR)programs/programname.bin
     ```

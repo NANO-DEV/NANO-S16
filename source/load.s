@@ -84,3 +84,6 @@ SECTION .bss
 kernel_stack:
 resb 0x2000                    ; kernel stack
 kernel_stack_top:
+global _disk_buff
+_disk_buff:
+resb 512 ; SECTOR_SIZE in kernel.h

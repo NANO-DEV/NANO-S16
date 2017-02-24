@@ -8,10 +8,6 @@
 #include "hw86.h"
 #include "ulib/ulib.h"
 
-
-uint32_t last_floppy_access = 0;
-
-
 /*
  * See fs.h for more detailed description
  * of file system and functions
@@ -129,7 +125,7 @@ static uchar* string_to_name(uchar* str)
  */
 static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar* buff)
 {
-  uchar aux_buff[SECTOR_SIZE];
+/*  uchar* aux_buff; [SECTOR_SIZE];*/
   uint n_sectors = 0;
   uint i = 0;
   uint result = 0;
@@ -161,9 +157,9 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
    * If requested offset is unaligned to sectors, read an entire
    * sector and copy only requested bytes in buff */
   if(offset) {
-    result = read_disk_sector(disk, sector, 1, aux_buff);
+    result = read_disk_sector(disk, sector, 1, disk_buff);
     i = min(SECTOR_SIZE-offset, buff_size);
-    memcpy(buff, &aux_buff[offset], i);
+    memcpy(buff, &disk_buff[offset], i);
     sector++;
     buff_size -= i;
   }
@@ -179,11 +175,11 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
     if(result == 0x900) {
       debugstr("Read disk: DMA access accross 64Kb boundary. Reading sector by sector\n\r");
       for(; n_sectors > 0; n_sectors--) {
-        result = read_disk_sector(disk, sector, 1, aux_buff);
+        result = read_disk_sector(disk, sector, 1, disk_buff);
         if(result != 0) {
           break;
         }
-        memcpy(&buff[i], aux_buff, SECTOR_SIZE);
+        memcpy(&buff[i], disk_buff, SECTOR_SIZE);
         i += SECTOR_SIZE;
         sector++;
         buff_size -= SECTOR_SIZE;
@@ -199,13 +195,8 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
    * If requested size exceeds entire sectors, read
    * an entire sector and copy only requested bytes */
   if(buff_size && result == 0) {
-    result = read_disk_sector(disk, sector, 1, aux_buff);
-    memcpy(&buff[i], aux_buff, buff_size);
-  }
-
-  /* Update floppy access timer */
-  if(disk == 0x00 || disk == 0x01) {
-    last_floppy_access = get_timer();
+    result = read_disk_sector(disk, sector, 1, disk_buff);
+    memcpy(&buff[i], disk_buff, buff_size);
   }
 
   if(result != 0) {
@@ -221,7 +212,6 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
  */
 static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar* buff)
 {
-  uchar aux_buff[SECTOR_SIZE];
   uint n_sectors = 0;
   uint i = 0;
   uint result = 0;
@@ -253,10 +243,10 @@ static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar
    * If requested offset is unaligned to sectors, read an entire
    * sector, overwrite requested bytes, and write it */
   if(offset) {
-    result += read_disk_sector(disk, sector, 1, aux_buff);
+    result += read_disk_sector(disk, sector, 1, disk_buff);
     i = min(SECTOR_SIZE-offset, buff_size);
-    memcpy(&aux_buff[offset], buff, i);
-    result += write_disk_sector(disk, sector, 1, aux_buff);
+    memcpy(&disk_buff[offset], buff, i);
+    result += write_disk_sector(disk, sector, 1, disk_buff);
     sector++;
     buff_size -= i;
   }
@@ -271,8 +261,8 @@ static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar
     if(result == 0x900) {
       debugstr("Write disk: DMA access accross 64Kb boundary. Writting sector by sector\n\r");
       for(; n_sectors > 0; n_sectors--) {
-        memcpy(aux_buff, &buff[i], SECTOR_SIZE);
-        result = write_disk_sector(disk, sector, 1, aux_buff);
+        memcpy(disk_buff, &buff[i], SECTOR_SIZE);
+        result = write_disk_sector(disk, sector, 1, disk_buff);
         if(result != 0) {
           break;
         }
@@ -291,14 +281,9 @@ static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar
    * If requested size exceeds entire sectors, read
    * an entire sector, overwrite requested bytes, and write */
   if(buff_size && result == 0) {
-    result += read_disk_sector(disk, sector, 1, aux_buff);
-    memcpy(aux_buff, &buff[i], buff_size);
-    result += write_disk_sector(disk, sector, 1, aux_buff);
-  }
-
-  /* Update floppy access timer */
-  if(disk == 0x00 || disk == 0x01) {
-    last_floppy_access = get_timer();
+    result += read_disk_sector(disk, sector, 1, disk_buff);
+    memcpy(disk_buff, &buff[i], buff_size);
+    result += write_disk_sector(disk, sector, 1, disk_buff);
   }
 
   if(result != 0) {
@@ -362,19 +347,15 @@ void fs_init_info()
       /* Read superblock and check file system type and data */
       struct SFS_SUPERBLOCK sb;
       result = read_disk(index_to_disk(disk_index), 1, 0, sizeof(sb), &sb);
-      if(result == 0) {
-        if(sb.type == SFS_TYPE_ID) {
-          disk_info[disk_index].fstype = FS_TYPE_NSFS;
-          disk_info[disk_index].fssize = sb.size;
-          debugstr("NSFS\n\r");
-          continue;
-        }
+      if(result == 0 && sb.type == SFS_TYPE_ID) {
+        disk_info[disk_index].fstype = FS_TYPE_NSFS;
+        disk_info[disk_index].fssize = sb.size;
+        debugstr("NSFS\n\r");
+        continue;
       }
-
-    } else  {
-      disk_info[disk_index].fstype = FS_TYPE_UNKNOWN;
-      disk_info[disk_index].fssize = 0;
     }
+    disk_info[disk_index].fstype = FS_TYPE_UNKNOWN;
+    disk_info[disk_index].fssize = 0;
     debugstr("unknown\n\r");
   }
 }

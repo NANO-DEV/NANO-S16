@@ -75,9 +75,9 @@ extern uint read_disk_sector(uint disk, uint sector, uint n, uchar* buff);
  */
 extern uint write_disk_sector(uint disk, uint sector, uint n, uchar* buff);
 /*
- * Turn off floppy motors
+ * Turn off floppy disk motors
  */
-extern void turn_off_floppy_motors();
+extern void turn_off_fd_motors();
 /*
  * Get system time
  */
@@ -99,6 +99,14 @@ void outb(uchar value, uint port);
  */
 uchar inb(uint port);
 /*
+ * Write word to port
+ */
+void outw(uint value, uint port);
+/*
+ * Read word from port
+ */
+uint inw(uint port);
+/*
  * Initialize timer (PIT)
  */
 void timer_init(uint32_t freq);
@@ -110,5 +118,9 @@ void PIC_init();
  * Power off system using APM
  */
 extern void apm_shutdown();
+/*
+ * Reboot system
+ */
+extern void reboot();
 
 #endif   /* _HWx86_H */
