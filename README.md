@@ -91,6 +91,7 @@ Example:
 ```
 config
 config debug enabled
+config graphics disabled
 ```
 
 ####COPY

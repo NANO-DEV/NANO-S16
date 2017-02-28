@@ -20,14 +20,23 @@
 static uint SCREEN_WIDTH = 80;
 static uint SCREEN_HEIGHT = 25;
 
+/* Mouse position and buttons */
+static uint mouse_x = 0;
+static uint mouse_y = 0;
+static uint mouse_buttons = 0;
+
+/* This buffer holds a copy of screen chars.
+ * So, screen is only updated when it's actually needed */
+static lp_t screen_buff = 0;
+
 /*
  * Get first char of a far memory string.
  * Far memory needs to be accessed thorugh its API
  */
-static uchar getlc(lptr ptr)
+static uchar getlc(lp_t ptr)
 {
   uchar c = 0;
-  lmemcpy(lp(&c), (uint32_t)0, ptr, (uint32_t)0, (uint32_t)1);
+  lmemcpy(lp(&c), 0L, ptr, 0L, 1L);
   return c;
 }
 
@@ -35,9 +44,29 @@ static uchar getlc(lptr ptr)
  * Set a char of a far memory string at a given offset
  * Far memory needs to be accessed thorugh its API
  */
-static void setlc(lptr ptr, uint32_t offset, uchar c)
+static void setlc(lp_t ptr, ul_t offset, uchar c)
 {
-  lmemcpy(ptr, offset, lp(&c), (uint32_t)0, (uint32_t)1);
+  lmemcpy(ptr, offset, lp(&c), 0L, 1L);
+}
+
+/*
+ * Check the local screen buffer before actually updating
+ * the screen
+ */
+static void editor_putchar(uint col, uint row, uchar c)
+{
+  uchar buff_c = 0;
+  ul_t screen_offset = col + (row-1)*SCREEN_WIDTH;
+  lmemcpy(lp(&buff_c), 0L, screen_buff, screen_offset, 1L);
+
+  if(col==mouse_x && row==mouse_y) { /* Draw mouse where it's located */
+    c = '+';
+  }
+
+  if(c != buff_c) {
+    lmemcpy(screen_buff, screen_offset, lp(&c), 0L, 1L);
+    putchar_attr(col, row, c, EDITOR_ATTRIBUTES);
+  }
 }
 
 /*
@@ -46,26 +75,26 @@ static void setlc(lptr ptr, uint32_t offset, uchar c)
  * if there are not more lines
  *
  * Initial line of input string can be:
- * - shown at given screen_y if mode==SHOW_CURRENT
+ * - shown at given row if mode==SHOW_CURRENT
  * - just skipped if mode==SKIP_CURRENT
  */
-static lptr next_line(uint mode, uint screen_y, lptr line)
+static lp_t next_line(uint mode, uint row, lp_t line)
 {
-  uint x = 0;
+  uint col = 0;
 
   /* Process string until next line or end of string
    * and show text if needed
    */
-  while(line && getlc(line) && getlc(line)!='\n' && x<SCREEN_WIDTH) {
+  while(line && getlc(line) && getlc(line)!='\n' && col<SCREEN_WIDTH) {
     if(mode == SHOW_CURRENT) {
-      putchar_attr(x++, screen_y, getlc(line), EDITOR_ATTRIBUTES);
+      editor_putchar(col++, row, getlc(line));
     }
     line++;
   }
 
   /* Clear the rest of this line with spaces */
-  while(x<SCREEN_WIDTH && mode == SHOW_CURRENT) {
-    putchar_attr(x++, screen_y, ' ', EDITOR_ATTRIBUTES);
+  while(col<SCREEN_WIDTH && mode == SHOW_CURRENT) {
+    editor_putchar(col++, row, ' ');
   }
 
   /* Advance until next line begins */
@@ -81,7 +110,7 @@ static lptr next_line(uint mode, uint screen_y, lptr line)
  * number of line of buffer.
  * It's recommended to hide cursor before calling this function
  */
-void show_buffer_at_line(lptr buff, uint n)
+void show_buffer_at_line(lp_t buff, uint n)
 {
   uint l = 0;
 
@@ -96,7 +125,7 @@ void show_buffer_at_line(lptr buff, uint n)
     if(getlc(buff)) {
       buff = next_line(SHOW_CURRENT, l, buff);
     } else {
-      next_line(SHOW_CURRENT, l, (lptr)0);
+      next_line(SHOW_CURRENT, l, 0L);
     }
   }
 }
@@ -105,7 +134,7 @@ void show_buffer_at_line(lptr buff, uint n)
  * Convert linear buffer offset (uint offset)
  * to line and col (output params)
  */
-void buffer_offset_to_linecol(lptr buff, uint32_t offset, uint* col, uint* line)
+void buffer_offset_to_linecol(lp_t buff, ul_t offset, uint* col, uint* line)
 {
   *col = 0;
   *line = 0;
@@ -130,9 +159,9 @@ void buffer_offset_to_linecol(lptr buff, uint32_t offset, uint* col, uint* line)
  * Converts line and col (input params) to
  * linear buffer offset (return value)
  */
-uint32_t linecol_to_buffer_offset(lptr buff, uint col, uint line)
+ul_t linecol_to_buffer_offset(lp_t buff, uint col, uint line)
 {
-  uint32_t offset = 0;
+  ul_t offset = 0;
   while(getlc(buff) && line>0) {
     if(getlc(buff) == '\n') {
       line--;
@@ -160,9 +189,9 @@ uint main(uint argc, uchar* argv[])
 {
   uchar* title_info = "F1:Save ESC:Exit"; /* const */
 
-  uint   i = 0;
-  uint   n = 0;
-  uint   result = 0;
+  uint i = 0;
+  uint n = 0;
+  uint result = 0;
 
   /* buff is fixed size and allocated in far memory so it
    * can be big enough.
@@ -170,15 +199,15 @@ uint main(uint argc, uchar* argv[])
    * buff_cursor_offset is the linear offset of current
    * cursor position inside buff
    */
-  lptr     buff = 0;
-  uint32_t buff_size = 0;
-  uint32_t buff_cursor_offset = 0;
+  lp_t buff = 0;
+  ul_t buff_size = 0;
+  ul_t buff_cursor_offset = 0;
 
   /* First line number to display in the editor area */
-  uint   current_line = 0;
+  uint current_line = 0;
 
   /* Var to get key presses */
-  uint   k  = 0;
+  uint k = 0;
 
   struct FS_ENTRY entry;
 
@@ -192,8 +221,8 @@ uint main(uint argc, uchar* argv[])
     return 1;
   }
 
-  /* Allocate fixed size buffer */
-  buff = lmalloc((uint32_t)0xFFFF);
+  /* Allocate fixed size text buffer */
+  buff = lmalloc(0xFFFFL);
   if(buff == 0) {
     putstr("Error: can't allocate memory\n\r");
     return 1;
@@ -204,7 +233,7 @@ uint main(uint argc, uchar* argv[])
 
   /* Load file or show error */
   if(n<ERROR_ANY && (entry.flags & FST_FILE)) {
-    uint32_t offset = 0;
+    ul_t offset = 0;
     uchar cbuff[512];
     setlc(buff, entry.size, 0);
     buff_size = entry.size;
@@ -214,7 +243,7 @@ uint main(uint argc, uchar* argv[])
         putstr("Can't read file %s (error=%x)\n\r", argv[1], result);
         return 1;
       }
-      lmemcpy(buff, offset, lp(cbuff), (uint32_t)0, (uint32_t)result);
+      lmemcpy(buff, offset, lp(cbuff), 0L, (ul_t)result);
       offset += result;
     }
     if(offset != entry.size) {
@@ -225,7 +254,7 @@ uint main(uint argc, uchar* argv[])
     }
     /* Buffer must finish with a 0 and */
     /* must fit at least this 0, so buff_size can't be 0 */
-    if(buff_size == 0 || getlc(buff + buff_size-(lptr)1) != 0) {
+    if(buff_size == 0 || getlc(buff + buff_size-1L) != 0) {
       buff_size++;
     }
   }
@@ -238,7 +267,18 @@ uint main(uint argc, uchar* argv[])
   }
 
   /* Get screen size */
-  get_screen_size(&SCREEN_WIDTH, &SCREEN_HEIGHT);
+  get_screen_size(SSM_CHARS, &SCREEN_WIDTH, &SCREEN_HEIGHT);
+
+  /* Allocate screen buffer */
+  screen_buff = lmalloc((ul_t)(SCREEN_WIDTH*(SCREEN_HEIGHT-1)));
+  if(screen_buff == 0) {
+    putstr("Error: can't allocate memory\n\r");
+    lmfree(buff);
+    return 1;
+  }
+
+  /* Clear screen buffer */
+  lmemset(screen_buff, 0, (ul_t)(SCREEN_WIDTH*(SCREEN_HEIGHT-1)));
 
   /* Write title */
   for(i=0; i<strlen(argv[1]); i++) {
@@ -262,8 +302,16 @@ uint main(uint argc, uchar* argv[])
   while(k != KEY_ESC) {
     uint col, line;
 
+    /* Getmouse state */
+    get_mouse_state(SSM_CHARS, &mouse_x, &mouse_y, &mouse_buttons);
+
+    /* Process buttons */
+    if(mouse_buttons & MOUSE_LEFT_BUTTON) {
+      buff_cursor_offset = linecol_to_buffer_offset(buff, mouse_x, mouse_y-1);
+    }
+
     /* Get key press */
-    k = getkey(KM_WAIT_KEY);
+    k = getkey(KM_NO_WAIT);
 
     /* Process key actions */
 
@@ -275,12 +323,12 @@ uint main(uint argc, uchar* argv[])
 
     /* Key F1: Save */
     } else if(k == KEY_F1) {
-      uint32_t offset = 0;
+      ul_t offset = 0;
       uchar cbuff[512];
       result = 0;
       while(offset<buff_size && result<ERROR_ANY) {
-        uint32_t to_copy = min(sizeof(cbuff), buff_size-offset);
-        lmemcpy(lp(cbuff), (uint32_t)0, buff, offset, to_copy);
+        ul_t to_copy = min(sizeof(cbuff), buff_size-offset);
+        lmemcpy(lp(cbuff), (ul_t)0, buff, offset, to_copy);
         result = write_file(cbuff, argv[1], (uint)offset, (uint)to_copy, FWF_CREATE | FWF_TRUNCATE);
         offset += to_copy;
       }
@@ -357,7 +405,7 @@ uint main(uint argc, uchar* argv[])
       }
 
     /* Any other key but esc: insert char at cursor */
-    } else if(k != KEY_ESC) {
+  } else if(k != KEY_ESC && k != 0) {
 
       if(k == KEY_RETURN) {
         k = '\n';
@@ -385,6 +433,9 @@ uint main(uint argc, uchar* argv[])
     set_cursor_position(col, line);
     set_show_cursor(SHOW_CURSOR);
   }
+
+  /* Free screen buffer */
+  lmfree(screen_buff);
 
   /* Free buffer */
   lmfree(buff);

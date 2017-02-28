@@ -36,6 +36,7 @@ _main:
   int  0x14
   mov  [_serial_status], ah
 
+
   ; Enable A20 line
   mov  ax,2401h               ; A20-Gate Activate by BIOS
   int  15h

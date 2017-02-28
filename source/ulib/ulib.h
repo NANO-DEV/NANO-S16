@@ -23,10 +23,16 @@ uint syscall(uint service, void* param);
  * Get HIGH byte
  */
 uchar getHI(uint c);
+
 /*
  * Get LOW byte
  */
 uchar getLO(uint c);
+
+/*
+ * Generate "random" number
+ */
+uint rand();
 
 
 /*
@@ -37,15 +43,16 @@ uchar getLO(uint c);
  * - New line is defined as "\n\r"
  */
 
- /*
-  * Send a character to the debug output
-  */
- void debugchar(uchar c);
+/*
+ * Send a character to the debug output
+*/
+void debugchar(uchar c);
 
 /*
  * Send a complex string on the debug output
  * Supports:
- * %d (int), %u (uint), %x (uint), %s (char*) and %U (uint32_t)
+ * %d (int), %u (uint), %x (uint), %s (uchar*),
+ * %c (uchar), %U (ul_t) and %X (ul_t)
  */
 void debugstr(uchar* format, ...);
 
@@ -58,7 +65,8 @@ void sputchar(uchar c);
 /*
  * Send a formatted string to the serial port
  * Supports:
- * %d (int), %u (uint), %x (uint), %s (char*) and %U (uint32_t)
+ * %d (int), %u (uint), %x (uint), %s (uchar*),
+ * %c (uchar), %U (ul_t) and %X (ul_t)
  */
 void sputstr(uchar* format, ...);
 
@@ -109,18 +117,53 @@ uchar sgetchar();
 #define AT_B_WHITE    0xF0
 
 /*
+ * Get video mode. Text mode and graphics mode are supported
+ * To be able to draw single pixels, use graphics mode.
+ * If only text is needed, use text mode.
+ * Graphics mode implements also a terminal emulation mode, so
+ * text mode functions are all available
+ */
+#define VM_TEXT     0
+#define VM_GRAPHICS 1
+uint get_video_mode();
+
+/*
+ * Set video mode. See VM defines above
+ */
+void set_video_mode(uint mode);
+
+/*
  * Get video mode screen size
  *
- * Screen positions are referred as x,y in this library.
- * x: column in screen. From 0 (leftmost) to width-1
- * y: line in screen. From 0 (topmost) to height-1
+ * Mode can be SSM_CHARS (number of characters) for text and terminal emulation
+ * modes and SSM_PIXELS (pixels) for graphics modes
  */
-void get_screen_size(uint* width, uint* height);
+#define SSM_CHARS  0
+#define SSM_PIXELS 1
+void get_screen_size(uint mode, uint* width, uint* height);
 
 /*
  * Clears the screen
  */
 void clear_screen();
+
+/*
+ * Draw a pixel in graphics mode
+ * color = byte, 256 color default VGA palette
+ */
+void set_pixel(uint x, uint y, uint color);
+
+/*
+ * Draw a char in graphics mode
+ * color = byte, 256 color default VGA palette
+ */
+void draw_char(uint x, uint y, uint c, uint color);
+
+/*
+ * Draw a map in graphics mode
+ * buff = array of bytes, one per pixel, 256 color default VGA palette
+ */
+void draw_map(uint x, uint y, uchar* buff, uint width, uint height);
 
 /*
  * Send a character to the screen at cursor position
@@ -131,14 +174,15 @@ void putchar(uchar c);
  * Send a character to the screen at a given position and
  * specific attributes. See attribute flags above.
  *
- * Cursor will be relocated to x, y in the screen
+ * Cursor will be relocated to col, row in the screen
  */
-void putchar_attr(uint x, uint y, uchar c, uchar attr);
+void putchar_attr(uint col, uint row, uchar c, uchar attr);
 
 /*
  * Display complex string on the screen at cursor position
  * Supports:
- * %d (int), %u (uint), %x (uint), %s (char*) and %U (uint32_t)
+ * %d (int), %u (uint), %x (uint), %s (uchar*),
+ * %c (uchar), %U (ul_t) and %X (ul_t)
  */
 void putstr(uchar* format, ...);
 
@@ -146,12 +190,12 @@ void putstr(uchar* format, ...);
 /*
  * Get cursor position
  */
-void get_cursor_position(uint* x, uint* y);
+void get_cursor_position(uint* col, uint* row);
 
 /*
  * Set cursor position
  */
-void set_cursor_position(uint x, uint y);
+void set_cursor_position(uint col, uint row);
 
 /*
  * Set cursor visibility
@@ -228,6 +272,16 @@ uint getkey(uint mode);
  */
 uint getstr(uchar* str, uint max_count);
 
+/*
+ * Get mouse state
+ * mode affects values returned in x and y and can be:
+ * SSM_CHARS (text mode cursor, characters)
+ * SSM_PIXELS (graphics mode, pixels)
+ * b returns pressed buttons. Compare bits with MOUSE_X_BUTTON
+ *
+ */
+#define MOUSE_LEFT_BUTTON 0x01
+void get_mouse_state(uint mode, uint* x, uint* y, uint* b);
 
 
 /*
@@ -322,7 +376,7 @@ void mfree(void* ptr);
  * This operating system uses a compact memory model: one code segment and
  * multiple data segments.
  *
- * The far pointers (or long pointers, lptr) allow access to more than 1MB of
+ * The far pointers (or long pointers, lp_t) allow access to more than 1MB of
  * data outside the code segment, while near memory pointers do it only for
  * 64KB inside the code segment. Vars and malloc allocations are usually
  * allocated in near memory and can be used in a conventional way. Conversely,
@@ -335,48 +389,47 @@ void mfree(void* ptr);
  *     accessed by the usual way (pointer[offset] = value  : is not allowed).
  *     They can only be accessed using lmemcpy and lmemset functions.
  * - To copy far memory from/to near memory, use far memory functions and lp()
- *     function to cast near memory pointers to lptr.
+ *     function to cast near memory pointers to lp_t.
  *
  * Example:
  *
  * uchar cbuff[128];            // Conventional near memory
- * lptr  xbuff = lmalloc(128);  // Long pointer, far memory
+ * lp_t  xbuff = lmalloc(128);  // Long pointer, far memory
  *
  * // xbuff[0] = cbuff[0];  NOT ALLOWED
  * // cbuff[0] = xbuff[0];  NOT ALLOWED
  * // write(xbuff, ...); NOT ALLOWED. Instead, copy first to cbuff
  *
- * lmemcpy(xbuff, 0, lp(cbuff), 0, sizeof(buff)); // This is right
- * lmemcpy(lp(cbuff), 0, xbuff, 0, sizeof(buff)); // This is right
+ * lmemcpy(xbuff, 0L, lp(cbuff), 0L, sizeof(buff)); // This is right
+ * lmemcpy(lp(cbuff), 0L, xbuff, 0L, sizeof(buff)); // This is right
  *
  * lmfree(xbuff);
  */
 
 /*
- * Convert pointer to lptr
+ * Convert pointer to lp_t
  */
-lptr lp(void* ptr);
+lp_t lp(void* ptr);
 
 /*
  * Copy size bytes from src[src_offs] to dst[dst_offs] (far memory)
  */
-uint32_t lmemcpy(lptr dst, uint32_t dst_offs,
-  lptr src, uint32_t src_offs, uint32_t size);
+ul_t lmemcpy(lp_t dst, ul_t dst_offs, lp_t src, ul_t src_offs, ul_t size);
 
 /*
  * Set size bytes from src to value (far memory)
  */
-uint32_t lmemset(lptr dst, uchar value, uint32_t size);
+ul_t lmemset(lp_t dst, uchar value, ul_t size);
 
 
 /*
  * Allocate size bytes of contiguous far memory
  */
-lptr lmalloc(uint32_t size);
+lp_t lmalloc(ul_t size);
 /*
  * Free allocated far memory
  */
-void lmfree(lptr ptr);
+void lmfree(lp_t ptr);
 
 
 /*
@@ -432,10 +485,10 @@ struct  FS_ENTRY {
 
 struct FS_INFO {
   uchar name[4];
-  uint      id;        /* Disk id code */
-  uint      fs_type;
-  uint32_t  fs_size;   /* MB */
-  uint32_t  disk_size; /* MB */
+  uint  id;        /* Disk id code */
+  uint  fs_type;
+  ul_t  fs_size;   /* MB */
+  ul_t  disk_size; /* MB */
 };
 
 /*
@@ -556,7 +609,12 @@ void time(struct TIME* t);
 /*
  * Get system alive time in miliseconds
  */
-uint32_t get_timer();
+ul_t get_timer();
+
+/*
+ * Wait an amount of miliseconds
+ */
+void wait(uint miliseconds);
 
 
 

@@ -7,7 +7,7 @@
 
 #define OS_VERSION_HI 2
 #define OS_VERSION_LO 0
-#define OS_BUILD_NUM 9
+#define OS_BUILD_NUM 10
 
 /*
  * Hardware related disk information is handled by the kernel module.
@@ -23,15 +23,15 @@
 extern uchar disk_buff[SECTOR_SIZE];
 
 struct DISKINFO {
-    uint     id;          /* Disk id */
-    uchar    name[4];     /* Disk name */
-    uint     fstype;      /* File system type: see ulib.h */
-    uint32_t fssize;      /* Number of blocks in file system */
-    uint     sectors;
-    uint     sides;
-    uint     cylinders;
-    uint32_t size;        /* Disk size (MB) */
-    uint32_t last_access; /* Last accessed time (system ms) */
+    uint  id;          /* Disk id */
+    uchar name[4];     /* Disk name */
+    uint  fstype;      /* File system type: see ulib.h */
+    ul_t  fssize;      /* Number of blocks in file system */
+    uint  sectors;
+    uint  sides;
+    uint  cylinders;
+    ul_t  size;        /* Disk size (MB) */
+    ul_t  last_access; /* Last accessed time (system ms) */
 };
 
 extern struct DISKINFO disk_info[MAX_DISK]; /* Disks info */
@@ -40,10 +40,13 @@ extern uchar serial_status;  /* Serial port status */
 extern uchar a20_enabled; /* A20 line enabled */
 extern uint serial_debug; /* Debug info through serial port */
 
-extern uint screen_width; /* Screen width */
-extern uint screen_height; /* Screen height */
+extern uint graphics_mode;  /* Graphics mode enabled */
+extern uint screen_width_px; /* Screen width (pixels) */
+extern uint screen_height_px; /* Screen height (pixels) */
+extern uint screen_width_c; /* Screen width (text) */
+extern uint screen_height_c; /* Screen height (text) */
 
-extern uint32_t IRQ0_frequency; /* Actual frequency of timer */
-extern uint32_t system_timer_ms; /* Number of whole ms since timer initialized */
+extern ul_t system_timer_freq; /* Actual frequency of timer */
+extern ul_t system_timer_ms; /* Number of whole ms since timer initialized */
 
 #endif   /* _KERNEL_H */

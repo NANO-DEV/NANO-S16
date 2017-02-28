@@ -40,8 +40,8 @@ _syscall:
 
 
 ;
-; lptr lp(void* ptr)
-; Convert pointer to lptr
+; lp_t lp(void* ptr)
+; Convert pointer to lp_t
 ;
 global _lp
 _lp:
@@ -57,7 +57,7 @@ _lp:
 
   add  edx, eax
   mov  ax, dx
-  shr  edx, 20
+  shr  edx, 16
 
   pop  bx
   ret

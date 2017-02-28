@@ -18,7 +18,7 @@ _dump_regs:
   push ss
 
   push .dumpstr
-  call _sputstr
+  call _debugstr
   pop  ax
 
   pop  ax
@@ -30,8 +30,14 @@ _dump_regs:
   ret
 
 .dumpstr db "REG DUMP:",13,10,"SS=%x ES=%x DS=%x CS=%x",13,10,"DI=%x SI=%x BP=%x SP=%x",13,10,"BX=%x DX=%x CX=%x AX=%x",13,10, 0
-extern _sputstr
+extern _debugstr
 
+
+
+extern _screen_width_c, _screen_height_c, _screen_width_px, _screen_height_px, _graphics_mode
+extern _video_show_cursor, _video_hide_cursor, _video_get_cursor_pos, _video_set_cursor_pos
+extern _video_out_char, _video_out_char_attr, _video_clear_screen, _video_window_y, _video_font_h
+extern _video_enable, _video_disable
 
 ;
 ; void io_set_text_mode()
@@ -43,13 +49,68 @@ _io_set_text_mode:
   push ax
   push bx
 
-  mov  al, 0x03
+  call _video_disable
+
+  mov  al, 0x03         ; 80x25 text mode
   mov  ah, 0x00
   int  0x10
 
-  mov  ax, 0x1112       ; Use this to set 80x50 video mode
+  mov  ah, 0x05         ; Set active page = 0
+  mov  al, 0
+  int  0x10
+
+  mov  ax, 0x1112       ; Set 8x8 font
   mov  bl, 0
   int  0x10
+
+  mov  word [_graphics_mode], 0
+  mov  word [_screen_width_px], 0
+  mov  word [_screen_height_px], 0
+  mov  word [_screen_width_c], 80
+  mov  word [_screen_height_c], 50
+
+  pop  bx
+  pop  ax
+  ret
+
+;
+; void io_set_graphics_mode()
+; Set the graphics mode
+;
+global _io_set_graphics_mode
+_io_set_graphics_mode:
+  push ax
+  push bx
+
+  mov  ah, 0x12         ; Enable default palette loading
+  mov  bl, 0x31
+  mov  al, 0x00
+  int  0x10
+
+  mov  ax, 0x4F02       ; Set graphics mode (VESA)
+  mov  bx, 0x103
+  int  0x10
+
+  mov  ah, 0x12         ; Enable memory access
+  mov  bl, 0x32
+  mov  al, 0
+  int  0x10
+
+  mov  ax, 0x1123       ; Set grphics font memory
+  mov  bl, 0x00         ; and specify rows
+  mov  dl, 75
+  int  0x10
+
+  mov  word [_graphics_mode], 1
+  mov  word [_screen_width_px], 800
+  mov  word [_screen_height_px], 600
+  mov  word [_screen_width_c], 100
+  mov  word [_screen_height_c], 75
+  mov  word [_video_window_y], 0
+  mov  word [_video_font_h], 8
+
+  call _video_enable
+  call _video_clear_screen
 
   pop  bx
   pop  ax
@@ -57,40 +118,142 @@ _io_set_text_mode:
 
 
 ;
+; void io_set_vesa_bank(uint bank)
+; Set active VESA bank
+;
+global  _io_set_vesa_bank
+_io_set_vesa_bank:
+  push ax
+  push bx
+  push dx
+
+  mov  ax, 0x4F05
+  mov  bx, sp
+  mov  edx, [bx+8]
+  mov  ebx, 0
+  int  0x10
+
+  pop  dx
+  pop  bx
+  pop  ax
+  ret
+
+
+;
+; lp_t io_get_bios_font(uint* offset)
+; Get BIOS font pointer and offset
+;
+global _io_get_bios_font
+_io_get_bios_font:
+  push bx
+  push es
+  push bp
+
+  mov  bx, sp           ; Fill font offset info
+  mov  cx, 0x40
+  mov  es, cx
+  mov  ax, [es:0x85]
+  mov  [bx+8], ax
+
+  mov  ax, 0x1130       ; Get the pointer in es:bp
+  mov  bh, 0x03
+  int  0x10
+
+  mov  ebx, 0           ; Multiply segment by 0x10 and move to ebx
+  mov  bx, es
+  sal  ebx, 4
+
+  mov  eax, 0           ; Add offset to ebx, so it contains the pointer
+  mov  ax, bp
+  add  ebx, eax
+
+  mov  ax, bx           ; Return pointer in dx:ax
+  shr  ebx, 16
+  mov  dx, bx
+
+  pop  bp
+  pop  es
+  pop  bx
+  ret
+
+
+;
 ; void io_clear_screen()
-; Clears the text screen for text mode
+; Clears the screen
 ;
 global _io_clear_screen
 _io_clear_screen:
+  cmp  word [_graphics_mode], 1
+  je  _video_clear_screen
+
   pusha
 
   mov  dx, 0            ; Position cursor at top-left
-  mov  bh, 0
-  mov  ah, 2
-  int  10h              ; BIOS interrupt to move cursor
+  push dx
+  push dx
+  call _io_set_cursor_pos
+  pop  dx
+  pop  dx
 
   mov  ah, 6            ; Scroll full-screen
   mov  al, 0            ; Normal white on black
-  mov  bh, 0x07         ; scolor
+  mov  bh, 0x07         ; Clear attributes
   mov  cx, 0            ; Top-left
-  mov  dh, [_screen_height] ; Bottom-right
+  mov  dh, [_screen_height_c] ; Bottom-right
   sub  dh, 1
-  mov  dl, [_screen_width]
+  mov  dl, [_screen_width_c]
   sub  dl, 1
   int  10h
 
   popa
   ret
 
-extern _screen_width, _screen_height
+;
+; void io_scroll_screen()
+; Scrolls the screen
+;
+global _io_scroll_screen
+_io_scroll_screen:
+  pusha
+
+  cmp  word [_graphics_mode], 1
+  jne  .scroll_text_mode
+
+  mov  ax, 0x4F07       ; Set display start line
+  mov  bl, 0x00
+  mov  cx, 0
+  mov  dx, [_video_window_y]
+  add  dx, [_video_font_h]
+  int  0x10
+  mov  [_video_window_y], dx
+
+  jmp  .end
+
+.scroll_text_mode:
+  mov  ah, 6            ; Scroll screen
+  mov  al, 1
+  mov  bh, 0x07         ; text clear color
+  mov  cx, 0            ; Top-left
+  mov  dh, [_screen_height_c] ; Bottom-right
+  sub  dh, 1
+  mov  dl, [_screen_width_c]
+  sub  dl, 1
+  int  10h
+
+.end:
+  popa
+  ret
 
 
 ;
 ; void io_out_char(uchar c)
 ; Write a char to display in teletype mode
-; Parameters are passed on the stack
+;
 global  _io_out_char
 _io_out_char:
+  cmp  word [_graphics_mode], 1
+  je   _video_out_char
+
   push bx
   push ax
 
@@ -100,7 +263,7 @@ _io_out_char:
   jne  .print
   mov  al, 0x20         ; Replace '\t' with a space
 .print:
-  mov  bx, 0x01
+  mov  bx, 0x07         ; Gray?
   mov  ah, 0x0E         ; int 10h teletype function
   int  0x10             ; Print it
 
@@ -110,11 +273,14 @@ _io_out_char:
 
 
 ;
-; void io_out_char_attr(uint x, uint y, uchar c, uchar color)
+; void io_out_char_attr(uint col, uint row, uchar c, uchar attr)
 ; Write a char to display in specific position
 ;
 global  _io_out_char_attr
 _io_out_char_attr:
+  cmp  word [_graphics_mode], 1
+  je   _video_out_char_attr
+
   push ax
   push bx
   push cx
@@ -150,6 +316,130 @@ _io_out_char_attr:
 
 
 ;
+; void io_hide_cursor()
+; Hide the cursor
+;
+global  _io_hide_cursor
+_io_hide_cursor:
+  cmp  word [_graphics_mode], 1
+  je   _video_hide_cursor
+
+  push ax
+  push cx
+
+  mov  ch, 0x20
+  mov  ah, 0x01
+  int  0x10
+
+  pop  cx
+  pop  ax
+  ret
+
+
+;
+; void io_show_cursor()
+; Show the cursor
+;
+global  _io_show_cursor
+_io_show_cursor:
+  cmp  word [_graphics_mode], 1
+  je   _video_show_cursor
+
+  push ax
+  push cx
+
+  mov  ch, 6
+  mov  cl, 7
+  mov  ah, 1
+  mov  al, 3
+  int  0x10
+
+  pop  cx
+  pop  ax
+  ret
+
+
+;
+; void io_get_cursor_position(uint* col, uint* row)
+; Get the cursor position
+;
+global  _io_get_cursor_pos
+_io_get_cursor_pos:
+  cmp  word [_graphics_mode], 1
+  je   _video_get_cursor_pos
+
+  push ax
+  push bx
+  push dx
+
+  mov  ah, 3
+  mov  bh, 0
+  int  0x10
+
+  mov  bx, sp
+  mov  bx, [bx+8]
+  mov  byte [bx], dl
+  mov  byte [bx+1], 0
+  mov  bx, sp
+  mov  bx, [bx+10]
+  mov  byte [bx], dh
+  mov  byte [bx+1], 0
+
+  pop  dx
+  pop  bx
+  pop  ax
+  ret
+
+
+;
+; void io_set_cursor_position(uint col, uint row)
+; Set the cursor position
+;
+;
+global  _io_set_cursor_pos
+_io_set_cursor_pos:
+  cmp  word [_graphics_mode], 1
+  je   _video_set_cursor_pos
+
+  push ax
+  push bx
+  push dx
+
+  mov  bx, sp
+  mov  byte dl, [bx+8]
+  mov  byte dh, [bx+10]
+  mov  ah, 2
+  mov  bh, 0
+  int  0x10
+
+  pop  dx
+  pop  bx
+  pop  ax
+  ret
+
+
+;
+; uint io_in_key()
+;
+;
+global _io_in_key
+_io_in_key:
+  mov  ax, 0            ; BIOS call to check if there is a key in buffer
+  mov  ah, 0x11
+  int  0x16
+  jz   .no_key
+
+  mov  ah, 0x10         ; BIOS call to wait for key
+  int  0x16             ; Since there is one in buffer, there is no wait
+  sti
+  ret
+
+.no_key:                ; No key pressed, return 0
+  mov  ax, 0
+  ret
+
+
+;
 ; void io_out_char_serial(uchar c)
 ; Write a char to serial port
 ;
@@ -174,6 +464,7 @@ _io_out_char_serial:
   pop  ax
   pop  bx
   ret
+
 
 ;
 ; uchar io_in_char_serial()
@@ -202,113 +493,6 @@ _io_in_char_serial:
   ret
 
 extern _serial_status
-
-;
-; void io_hide_cursor()
-; Hide the cursor in text mode using BIOS
-;
-global  _io_hide_cursor
-_io_hide_cursor:
-  push ax
-  push cx
-  mov  ch, 0x20
-  mov  ah, 0x01
-  int  0x10
-  pop  cx
-  pop  ax
-  ret
-
-
-;
-; void io_show_cursor()
-; Show the cursor in text mode using BIOS
-;
-global  _io_show_cursor
-_io_show_cursor:
-  pusha
-
-  mov  ch, 6
-  mov  cl, 7
-  mov  ah, 1
-  mov  al, 3
-  int  0x10
-
-  popa
-  ret
-
-
-;
-; void io_get_cursor_position(uint* x, uint* y)
-; Get the cursor position
-;
-global  _io_get_cursor_pos
-_io_get_cursor_pos:
-  push ax
-  push bx
-  push dx
-
-  mov  ah, 3
-  mov  bh, 0
-  int  0x10
-
-  mov  bx, sp
-  mov  bx, [bx+8]
-  mov  byte [bx], dl
-  mov  byte [bx+1], 0
-  mov  bx, sp
-  mov  bx, [bx+10]
-  mov  byte [bx], dh
-  mov  byte [bx+1], 0
-
-  pop  dx
-  pop  bx
-  pop  ax
-  ret
-
-
-;
-; void io_set_cursor_position(uint x, uint y)
-; Set the cursor position
-;
-;
-global  _io_set_cursor_pos
-_io_set_cursor_pos:
-  push ax
-  push bx
-  push dx
-
-  mov  bx, sp
-  mov  byte dl, [bx+8]
-  mov  byte dh, [bx+10]
-  mov  ah, 2
-  mov  bh, 0
-  int  0x10
-
-  pop  dx
-  pop  bx
-  pop  ax
-  ret
-
-
-;
-; uint io_in_key()
-;
-;
-global _io_in_key
-_io_in_key:
-  mov  ax, 0            ; BIOS call to check if ther is a key in buffer
-  mov  ah, 0x11
-  int  0x16
-  jz   .no_key
-
-  mov  ah, 0x10         ; BIOS call to wait for key
-  int  0x16             ; Since there is one in buffer, there is no wait
-  sti
-  ret
-
-.no_key:                ; No key pressed, return 0
-  mov  ax, 0
-  ret
 
 
 ;
@@ -651,7 +835,7 @@ dsides dw 0             ; Current disk sides
 
 
 ;
-; void lmem_setbyte(lptr addr, uchar b)
+; void lmem_setbyte(lp_t addr, uchar b)
 ; Set far memory byte
 ;
 global _lmem_setbyte
@@ -663,7 +847,7 @@ _lmem_setbyte:
 
   mov  bx, sp
   mov  ecx, [bx+12]
-  sal  cx, 8
+  sal  cx, 12
   mov  es, cx
   mov  cx, [bx+10]
   mov  al, [bx+14]
@@ -679,7 +863,7 @@ _lmem_setbyte:
 
 
 ;
-; uchar lmem_getbyte(lptr addr)
+; uchar lmem_getbyte(lp_t addr)
 ; Get far memory byte
 ;
 global _lmem_getbyte
@@ -690,7 +874,7 @@ _lmem_getbyte:
 
   mov  bx, sp
   mov  cx, [bx+10]
-  sal  cx, 8
+  sal  cx, 12
   mov  es, cx
   mov  cx, [bx+8]
   mov  bx, cx
@@ -787,7 +971,7 @@ _inw:
 ; All PIT related:
 ; http://wiki.osdev.org/Programmable_Interval_Timer
 ;
-; void timer_init(uint32_t freq)
+; void timer_init(ul_t freq)
 ; Init PIT
 ; freq = desired PIT frequency in Hz
 ;
@@ -798,7 +982,7 @@ _timer_init:
 
   mov  eax, 0
   mov  bx, sp
-  mov  ax, [bx+32+2]
+  mov  eax, [bx+32+4]
   mov  ebx, eax
 
   ; Check input freq
@@ -846,7 +1030,7 @@ _timer_init:
   jb   .l4              ; no, round down
   inc  eax              ; yes, round up
 .l4:
-  mov  [_IRQ0_frequency], eax ; Store the actual frequency for displaying later
+  mov  [_system_timer_freq], eax ; Store the actual frequency for displaying later
 
 ; Calculate the amount of time between IRQs in 32.32 fixed point
 ;
@@ -904,7 +1088,7 @@ PIT_reload_value dw 0 ; Current PIT reload value
 IRQ0_fractions   dd 0 ; Fractions of 1 ms between IRQs
 IRQ0_ms          dd 0 ; Number of whole ms between IRQs
 system_timer_fractions dd 0 ; Fractions of 1 ms since timer initialized
-extern _IRQ0_frequency, _system_timer_ms
+extern _system_timer_freq, _system_timer_ms
 
 ;
 ; Handler for the IRQ0
@@ -942,6 +1126,42 @@ IRQ0_handler:
 	iret
 
   extern _kernel_time_tick
+
+
+;
+; Handler for the IRQ12
+; Used by mouse
+;
+IRQ12_handler:
+	pushad
+  pushfd
+  push  ss
+  push  es
+  push  ds
+
+  cli
+  mov  ax, cs           ; Sometimes this is in an unknown state
+  mov  ds, ax           ; Still don't know why
+  mov  es, ax
+  mov  ss, ax
+
+  call _mouse_handler
+
+  mov  al, PIC_EOI
+  out  PORT_SPIC_COMMAND, al         ; Send the EOI to the PIC
+  out  PORT_MPIC_COMMAND, al         ; Send the EOI to the PIC
+
+
+  pop  ds
+  pop  es
+  pop  ss
+  popfd
+	popad
+
+	iret
+
+extern _mouse_handler
+
 
 ;
 ; void apm_shutdown()
@@ -1028,6 +1248,9 @@ ICW4_BUF_SLAVE equ 0x08		; Buffered mode/slave
 ICW4_BUF_MASTER equ 0x0C		; Buffered mode/master
 ICW4_SFNM equ 0x10		; Special fully nested (not)
 
+INT_CODE_MPIC_BASE equ 0x08
+INT_CODE_SPIC_BASE equ 0x70
+
 global _PIC_init
 _PIC_init:
   pusha
@@ -1072,14 +1295,46 @@ _PIC_init:
   popa
   ret
 
+;
+; void install_mouse_IRQ_handler()
+; Add mouse routine to interrupt vector table (IRQ12)
+;
+global _install_mouse_IRQ_handler
+_install_mouse_IRQ_handler:
+  pusha
+  push es
+  cli
+
+  ; Install handler
+  mov  ax, 0
+  mov  es, ax
+  mov  dx, IRQ12_handler
+  mov  [es:(INT_CODE_SPIC_BASE+4)*4], dx
+  mov  ax, cs
+  mov  [es:(INT_CODE_SPIC_BASE+4)*4+2], ax
+
+  ; Set IRQ12 (mouse) unmasked
+  in   al, PORT_SPIC_DATA
+  and  al, 11101111b
+  out  PORT_SPIC_DATA, al
+
+  ; Set IRQ2 (Slave PIC) unmasked
+  in   al, PORT_MPIC_DATA
+  and  al, 11111101b
+  out  PORT_MPIC_DATA, al
+
+  sti
+  pop  es
+  popa
+
+  ret
+
 
 ;
 ; Install IRS
 ;
 ;
 INT_CODE_SYSCALL equ 0x70
-INT_CODE_MPIC_BASE equ 0x08
-
 global _install_ISR
 _install_ISR:
   cli                   ; hardware interrupts are now stopped
@@ -1094,7 +1349,6 @@ _install_ISR:
 
   sti
   ret
-
 
 ;
 ; SYS_ISR

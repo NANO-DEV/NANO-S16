@@ -14,22 +14,58 @@
 */
 extern void dump_regs();
 /*
- * Set the VGA text mode to 80x25 with 16 colors
+ * Set the VGA text mode
  */
 extern void io_set_text_mode();
 /*
- * Clears the screen
+ * Set the graphics mode
+ */
+extern void io_set_graphics_mode();
+/*
+ * Set active VESA bank (only graphics mode)
+ */
+extern void io_set_vesa_bank(ul_t bank);
+/*
+ * Get BIOS font pointer and offset (only graphics mode)
+ */
+extern lp_t io_get_bios_font(uint* offset);
+/*
+ * Clears the screen (all modes)
  */
 extern void io_clear_screen();
 /*
- * Send a character to the screen in teletype mode
+ * Scrolls the screen one line (all modes)
+ */
+extern void io_scroll_screen();
+/*
+ * Send a character to the screen in teletype mode (all modes)
  */
 extern void io_out_char(uchar c);
 /*
  * Send a character to the screen at specific position
- * with attributes (text and background color)
+ * with attributes (text and background color) (all modes)
  */
-extern void io_out_char_attr(uint x, uint y, uchar c, uchar attr);
+extern void io_out_char_attr(uint col, uint row, uchar c, uchar attr);
+/*
+ * Hide the cursor (all modes)
+ */
+extern void io_hide_cursor();
+/*
+ * Show the cursor (all modes)
+ */
+extern void io_show_cursor();
+/*
+ * Get the cursor position (all modes)
+ */
+extern void io_get_cursor_pos(uint* col, uint* row);
+/*
+ * Set the cursor position (all modes)
+ */
+extern void io_set_cursor_pos(uint col, uint row);
+/*
+ * Get keystroke, returns 0 if no pressed keys in buffer
+ */
+extern uint io_in_key();
 /*
  * Send a character to the serial port
  */
@@ -38,26 +74,6 @@ extern void io_out_char_serial(uchar c);
  * Read a character from the serial port
  */
 extern uchar io_in_char_serial();
-/*
- * Hide the cursor
- */
-extern void io_hide_cursor();
-/*
- * Show the cursor
- */
-extern void io_show_cursor();
-/*
- * Get the cursor position
- */
-extern void io_get_cursor_pos(uint* x, uint* y);
-/*
- * Set the cursor position
- */
-extern void io_set_cursor_pos(uint x, uint y);
-/*
- * Get keystroke, returns 0 if no pressed keys in buffer
- */
-extern uint io_in_key();
 /*
  * Halt the computer
  */
@@ -85,11 +101,11 @@ extern void get_time(uchar* BDCtime, uchar* date);
 /*
  * Set far memory byte
  */
-extern void lmem_setbyte(lptr addr, uchar b);
+extern void lmem_setbyte(lp_t addr, uchar b);
 /*
  * Get far memory byte
  */
-extern uchar lmem_getbyte(lptr addr);
+extern uchar lmem_getbyte(lp_t addr);
 /*
  * Write byte to port
  */
@@ -109,7 +125,7 @@ uint inw(uint port);
 /*
  * Initialize timer (PIT)
  */
-void timer_init(uint32_t freq);
+void timer_init(ul_t freq);
 /*
  * Initialize PIC
  */

@@ -90,7 +90,7 @@ uint string_is_disk(uchar* str)
  */
 uint32_t blocks_to_MB(uint32_t blocks)
 {
-  return ((uint32_t)blocks*(uint32_t)BLOCK_SIZE)/(uint32_t)1048576;
+  return ((uint32_t)blocks*(uint32_t)BLOCK_SIZE)/1048576L;
 }
 
 /*
@@ -448,7 +448,7 @@ static uint path_parse_disk_parent_name(uchar** name, uint* parent, uint* disk, 
 static uint get_entry_n(struct SFS_ENTRY* entry, uint disk, uint n)
 {
   /* Compute block number and offset */
-  uint32_t block = (uint32_t)2 +
+  uint32_t block = 2L +
     ((uint32_t)n*(uint32_t)sizeof(struct SFS_ENTRY))/(uint32_t)BLOCK_SIZE;
 
   uint32_t offset = ((uint32_t)n *
@@ -603,7 +603,7 @@ uint fs_read_file(uchar* buff, uchar* path, uint offset, uint count)
 static uint write_entry(struct SFS_ENTRY* entry, uint disk, uint n)
 {
   /* Compute block number and offset */
-  uint32_t block = (uint32_t)2 +
+  uint32_t block = 2L +
     ((uint32_t)n*(uint32_t)sizeof(struct SFS_ENTRY))/(uint32_t)BLOCK_SIZE;
 
   uint32_t offset = ((uint32_t)n *
@@ -711,7 +711,7 @@ static uint find_free_block(uint disk)
   }
 
   /* Compute first data block index */
-  first_data_block = 2 +
+  first_data_block = 2L +
     ((uint32_t)sb.nentries*(uint32_t)sizeof(struct SFS_ENTRY))/(uint32_t)BLOCK_SIZE;
 
   /* For each possible block index */
@@ -1559,9 +1559,9 @@ uint fs_format(uint disk)
   sb->type = SFS_TYPE_ID;
   sb->size = disk_size;
   sb->nentries = min(
-    (uint32_t)(((sb->size * (uint32_t)BLOCK_SIZE)/(uint32_t)10)/(uint32_t)sizeof(struct SFS_ENTRY)),
-    (uint32_t)1024);
-  sb->bootstart = (uint32_t)2 + (sb->nentries * (uint32_t)sizeof(struct SFS_ENTRY)) / (uint32_t)BLOCK_SIZE;
+    (uint32_t)(((sb->size * (uint32_t)BLOCK_SIZE)/10L)/(uint32_t)sizeof(struct SFS_ENTRY)),
+    1024L);
+  sb->bootstart = 2L + (sb->nentries * (uint32_t)sizeof(struct SFS_ENTRY)) / (uint32_t)BLOCK_SIZE;
   result = write_disk(disk, 1, 0, BLOCK_SIZE, sb);
   if(result != 0) {
     return ERROR_IO;
@@ -1629,10 +1629,10 @@ uint fs_fstime_to_systime(uint32_t fst, struct TIME* syst)
 {
   syst->year   = ((fst >> 22 ) & 0x3FF) / 12 + 2017;
   syst->month  = ((fst >> 22 ) & 0x3FF) % 12 + 1;
-  syst->day    = ((fst & 0x3FFFFF) / (uint32_t)86400) + 1;  /* 86400=24*60*60 */
-  syst->hour   = ((fst & 0x3FFFFF) / (uint32_t)3600) % 24;  /* 3600=60*60 */
-  syst->minute = ((fst & 0x3FFFFF) / 60) % 60;
-  syst->second = (fst & 0x3FFFFF) % 60;
+  syst->day    = ((fst & 0x3FFFFFL) / 86400L) + 1;  /* 86400=24*60*60 */
+  syst->hour   = ((fst & 0x3FFFFFL) / 3600L) % 24;  /* 3600=60*60 */
+  syst->minute = ((fst & 0x3FFFFFL) / 60) % 60;
+  syst->second = (fst & 0x3FFFFFL) % 60;
   return 0;
 }
 
@@ -1645,7 +1645,7 @@ uint32_t fs_systime_to_fstime(struct TIME* syst)
   fst += ((uint32_t)syst->minute)*60;
   fst += ((uint32_t)syst->hour)*60*60;
   fst += ((uint32_t)(syst->day-1))*24*60*60;
-  fst &= 0x3FFFFF;
+  fst &= 0x3FFFFFL;
   fst |= ((uint32_t)(syst->year-2017)*12 + (syst->month-1)) << 22;
   return fst;
 }

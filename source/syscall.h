@@ -8,14 +8,19 @@
 /*
  * System call service codes
  */
-#define SYSCALL_IO_GET_SCREEN_SIZE      0x0000
-#define SYSCALL_IO_CLEAR_SCREEN         0x0001
+#define SYSCALL_IO_GET_VIDEO_MODE       0x0000
+#define SYSCALL_IO_SET_VIDEO_MODE       0x0001
+#define SYSCALL_IO_GET_SCREEN_SIZE      0x0002
+#define SYSCALL_IO_CLEAR_SCREEN         0x0003
+#define SYSCALL_IO_SET_PIXEL            0x0008
+#define SYSCALL_IO_DRAW_CHAR            0x000A
 #define SYSCALL_IO_OUT_CHAR             0x0010
 #define SYSCALL_IO_OUT_CHAR_ATTR        0x0011
 #define SYSCALL_IO_GET_CURSOR_POS       0x0018
 #define SYSCALL_IO_SET_CURSOR_POS       0x0019
 #define SYSCALL_IO_SET_SHOW_CURSOR      0x001A
 #define SYSCALL_IO_IN_KEY               0x0020
+#define SYSCALL_IO_GET_MOUSE_STATE      0x0028
 #define SYSCALL_IO_IN_CHAR_SERIAL       0x0030
 #define SYSCALL_IO_OUT_CHAR_SERIAL      0x0031
 #define SYSCALL_IO_OUT_CHAR_DEBUG       0x0038
@@ -51,53 +56,53 @@
  */
 
 struct TSYSCALL_FSINFO {
-  uint                disk_index;
-  struct CFS_INFO*    info;
+  uint               disk_index;
+  struct CFS_INFO*   info;
 };
 
 struct TSYSCALL_FSENTRY {
-  struct FS_ENTRY*    entry;
-  uchar*              path;
-  uint                parent;
-  uint                disk;
+  struct FS_ENTRY*   entry;
+  uchar*             path;
+  uint               parent;
+  uint               disk;
 };
 
 struct TSYSCALL_FSRWFILE {
-  uchar*               buff;
-  uchar*               path;
-  uint                 offset;
-  uint                 count;
-  uint                 flags;
+  uchar*             buff;
+  uchar*             path;
+  uint               offset;
+  uint               count;
+  uint               flags;
 };
 
 struct TSYSCALL_FSSRCDST {
-  uchar*               src;
-  uchar*               dst;
+  uchar*             src;
+  uchar*             dst;
 };
 
 struct TSYSCALL_FSLIST {
-  struct FS_ENTRY*     entry;
-  uchar*               path;
-  uint                 n;
+  struct FS_ENTRY*   entry;
+  uchar*             path;
+  uint               n;
 };
 
-struct TSYSCALL_CHARATTR {
-  uint                 x;
-  uint                 y;
-  uchar                c;
-  uchar                attr;
+struct TSYSCALL_POSATTR {
+  uint               x;
+  uint               y;
+  uint               c;
+  uint               attr;
 };
 
 struct TSYSCALL_POSITION {
-  uint                 x;
-  uint                 y;
-  uint*                px;
-  uint*                py;
+  uint               x;
+  uint               y;
+  uint*              px;
+  uint*              py;
 };
 
 struct TSYSCALL_LMEM {
-  lptr               dst;
-  uint32_t             n;
+  lp_t               dst;
+  ul_t               n;
 };
 
 #endif   /* _SYSCALL_H */

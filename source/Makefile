@@ -24,8 +24,8 @@ $(PROGDIR)%.bin: $(PROGDIR)%.c $(ULIBDIR)ulib.o $(ULIBDIR)x86.o
 $(BOOTDIR)boot.bin: $(BOOTDIR)boot.s
 	$(NASM) -O0 -w+orphan-labels -f bin -o $@ $(BOOTDIR)boot.s
 
-kernel.n16: load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o
-	$(LD86) $(LDFLAGS) -o $@ load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o
+kernel.n16: load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o
+	$(LD86) $(LDFLAGS) -o $@ load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o
 
 load.o: load.s
 	$(NASM) $(NFLAGS) -o $@ load.s
@@ -38,6 +38,9 @@ $(ULIBDIR)x86.o: $(ULIBDIR)x86.s
 
 $(ULIBDIR)ulib.o: $(ULIBDIR)ulib.h $(ULIBDIR)ulib.c types.h syscall.h
 	$(CC86) $(CFLAGS) -o $@ -c $(ULIBDIR)ulib.c
+
+video.o: video.c video.h types.h
+	$(CC86) $(CFLAGS) -o $@ -c video.c
 
 kernel.o: kernel.h kernel.c types.h syscall.h $(ULIBDIR)ulib.h fs.h
 	$(CC86) $(CFLAGS) -o $@ -c kernel.c

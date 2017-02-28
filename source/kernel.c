@@ -8,18 +8,27 @@
 #include "ulib/ulib.h"
 #include "syscall.h"
 #include "fs.h"
+#include "video.h"
 
 uchar serial_status = 0;  /* Serial port status */
 uint serial_debug = 0; /* Debug info through serial port */
 
 uchar a20_enabled = 0; /* A20 line enabled */
 
-uint32_t IRQ0_frequency = 0; /* Actual frequency of timer */
-uint32_t system_timer_ms = 10; /* ms since timer initialized */
+ul_t system_timer_freq = 0; /* Actual frequency of timer */
+ul_t system_timer_ms = 10; /* ms since timer initialized */
 /* Initialize to 10 ms so all 0 timestamps are outdated */
 
-uint screen_width  = 80; /* Screen size (text mode) */
-uint screen_height = 50;
+/* Mouse info */
+uint mouse_x = 0;
+uint mouse_y = 0;
+uint mouse_b = 0; /* Buttons */
+
+uint graphics_mode = 1;
+uint screen_width_c  = 80; /* Screen size (text mode cells) */
+uint screen_height_c = 50;
+uint screen_width_px  = 800; /* Screen size (graphics mode pixels) */
+uint screen_height_px = 600;
 
 /*
  * Disk related
@@ -118,13 +127,13 @@ static heap_free(void* ptr)
   return;
 }
 
-#define LMEM_START 0x00010000
-#define LMEM_LIMIT 0x00110000
-#define LMEM_BLOCK_SIZE 0x10
+#define LMEM_START 0x00018000L
+#define LMEM_LIMIT 0x000A0000L
+#define LMEM_BLOCK_SIZE 0x10L
 #define LMEM_MAX_BLOCK 64
 struct LMEMBLOCK {
-  lptr     start;
-  uint32_t size;
+  lp_t start;
+  ul_t size;
 } lmem[LMEM_MAX_BLOCK];
 
 /*
@@ -138,9 +147,9 @@ static void lmem_init()
 /*
  * Allocate far memory
  */
-static lptr lmem_alloc(uint32_t size)
+static lp_t lmem_alloc(ul_t size)
 {
-  lptr start = 0;
+  lp_t start = 0;
   uint i;
 
   /* If size is 0 or all blocks are used, return */
@@ -149,7 +158,9 @@ static lptr lmem_alloc(uint32_t size)
   }
 
   /* Align blocks to 16 bytes */
-  size += size % (uint32_t)LMEM_BLOCK_SIZE;
+  if(size % LMEM_BLOCK_SIZE) {
+    size += LMEM_BLOCK_SIZE - size%LMEM_BLOCK_SIZE;
+  }
 
   /* Find a continuous big enough free space */
   for(i=0; i<LMEM_MAX_BLOCK; i++) {
@@ -170,10 +181,10 @@ static lptr lmem_alloc(uint32_t size)
     } else {
       /* Next blocks are free. If it's the first, set start address */
       if(start == 0) {
-        start = (lptr)LMEM_START;
+        start = LMEM_START;
       }
       /* Set not found if there isn't enough space */
-      if((lptr)LMEM_LIMIT-start < size) {
+      if(LMEM_LIMIT-start < size) {
         start = 0;
       }
       break;
@@ -182,12 +193,14 @@ static lptr lmem_alloc(uint32_t size)
 
   /* Found if start != 0 */
   if(start != 0) {
+
     /* Allocate block at i */
     memcpy(&lmem[i+1], &lmem[i],
       (LMEM_MAX_BLOCK-i-1)*sizeof(struct LMEMBLOCK));
 
     lmem[i].start = start;
     lmem[i].size = size;
+
     return start;
   }
 
@@ -199,7 +212,7 @@ static lptr lmem_alloc(uint32_t size)
 /*
  * Free far memory
  */
-static void lmem_free(lptr ptr)
+static void lmem_free(lp_t ptr)
 {
   uint i = 0;
   if(ptr != 0) {
@@ -243,10 +256,28 @@ uint kernel_service(uint service, void* param)
 {
   switch(service) {
 
+    case SYSCALL_IO_GET_VIDEO_MODE:
+      return graphics_mode==0?VM_TEXT:VM_GRAPHICS;
+
+    case SYSCALL_IO_SET_VIDEO_MODE: {
+      uint mode = (uint)*param;
+      if(mode==VM_TEXT && graphics_mode==0) {
+        io_set_text_mode();
+      } else if(mode==VM_GRAPHICS && graphics_mode==1) {
+        io_set_graphics_mode();
+      }
+      return 0;
+    }
+
     case SYSCALL_IO_GET_SCREEN_SIZE: {
       struct TSYSCALL_POSITION* ps = param;
-      *(ps->px) = screen_width;
-      *(ps->py) = screen_height;
+      if(ps->x == SSM_CHARS) {
+        *(ps->px) = screen_width_c;
+        *(ps->py) = screen_height_c;
+      } else {
+        *(ps->px) = screen_width_px;
+        *(ps->py) = screen_height_px;
+      }
       return 0;
     }
 
@@ -254,12 +285,24 @@ uint kernel_service(uint service, void* param)
       io_clear_screen();
       return 0;
 
+    case SYSCALL_IO_SET_PIXEL: {
+      struct TSYSCALL_POSATTR* ca = param;
+      video_set_pixel(ca->x, ca->y, ca->c);
+      return 0;
+    }
+
+    case SYSCALL_IO_DRAW_CHAR: {
+      struct TSYSCALL_POSATTR* ca = param;
+      draw_char(ca->x, ca->y, ca->c, ca->attr, NO_BACKGROUND);
+      return 0;
+    }
+
     case SYSCALL_IO_OUT_CHAR:
       io_out_char((uchar)*param);
       return 0;
 
     case SYSCALL_IO_OUT_CHAR_ATTR: {
-      struct TSYSCALL_CHARATTR* ca = param;
+      struct TSYSCALL_POSATTR* ca = param;
       io_out_char_attr(ca->x, ca->y, ca->c, ca->attr);
       return 0;
     }
@@ -326,6 +369,18 @@ uint kernel_service(uint service, void* param)
       }
 
       return k;
+    }
+
+    case SYSCALL_IO_GET_MOUSE_STATE: {
+      struct TSYSCALL_POSATTR* pa = param;
+      pa->x = mouse_x;
+      pa->y = mouse_y;
+      pa->c = (mouse_b & 0x3);
+      if(pa->attr==SSM_CHARS && graphics_mode) {
+        pa->x /= (screen_width_px/screen_width_c);
+        pa->y /= (screen_height_px/screen_height_c);
+      }
+      return 0;
     }
 
     case SYSCALL_IO_OUT_CHAR_SERIAL:
@@ -439,7 +494,7 @@ uint kernel_service(uint service, void* param)
     }
 
     case SYSCALL_CLK_GET_MILISEC: {
-      uint32_t* timer_ms = param;
+      ul_t* timer_ms = param;
       *timer_ms = system_timer_ms;
       return 0;
     }
@@ -449,15 +504,148 @@ uint kernel_service(uint service, void* param)
 }
 
 /*
+ * Mouse IRQ handler
+ */
+void mouse_handler()
+{
+  static uchar mouse_cycle = 0;
+  char mouse_byte[3];
+  char m_x = 0;
+  char m_y = 0;
+
+  switch(mouse_cycle) {
+  case 0:
+    mouse_byte[0] = inb(0x60);
+    mouse_cycle++;
+    break;
+  case 1:
+    mouse_byte[1] = inb(0x60);
+    mouse_cycle++;
+    break;
+  case 2:
+    mouse_byte[2] = inb(0x60);
+    mouse_cycle = 0;
+
+    /* Update global state data */
+    mouse_b = mouse_byte[0];
+    m_x = mouse_byte[1];
+    m_y = mouse_byte[2];
+    mouse_x += m_x >= 0x80 ? m_x-0x100 : m_x;
+    mouse_y -= m_y >= 0x80 ? m_y-0x100 : m_y;
+
+    /* Clamp to screen */
+    if((int)mouse_x < 0) {
+      mouse_x = 0;
+    } else if(graphics_mode && mouse_x>screen_width_px) {
+      mouse_x = screen_width_px;
+    } else if(!graphics_mode && mouse_x>screen_width_c) {
+      mouse_x = screen_width_c;
+    }
+    if((int)mouse_y < 0) {
+      mouse_y = 0;
+    } else if(graphics_mode && mouse_y>screen_height_px) {
+      mouse_y = screen_height_px;
+    } else if(!graphics_mode && mouse_y>screen_height_c) {
+      mouse_y = screen_height_c;
+    }
+    break;
+  }
+}
+
+/*
+ * Wait mouse data
+ */
+#define MS_WAIT_DATA   0
+#define MS_WAIT_SIGNAL 1
+void mouse_wait(uchar type)
+{
+  uint time_out = 0xFFFF;
+  if(type == MS_WAIT_DATA) {
+    while(time_out--) {
+      if((inb(0x64) & 1) == 1) {
+        return;
+      }
+    }
+    return;
+  } else {
+    while(time_out--) {
+      if((inb(0x64) & 2) == 0) {
+        return;
+      }
+    }
+    return;
+  }
+}
+
+/*
+ * Write mouse data
+ */
+void mouse_write(uchar a_write)
+{
+  /* Wait until able to send a command */
+  mouse_wait(MS_WAIT_SIGNAL);
+  /* Will send a command */
+  outb(0xD4, 0x64);
+  /* Wait for the data */
+  mouse_wait(MS_WAIT_SIGNAL);
+  /* Write */
+  outb(a_write, 0x60);
+}
+
+/*
+ * Read mouse data
+ */
+uchar mouse_read()
+{
+  mouse_wait(MS_WAIT_DATA);
+  return inb(0x60);
+}
+
+extern void install_mouse_IRQ_handler(); /* Need to init mouse */
+/*
+ * Init mouse
+ */
+void mouse_init()
+{
+  uchar status;
+
+  /* Enable the auxiliary mouse device */
+  mouse_wait(MS_WAIT_SIGNAL);
+  outb(0xA8, 0x64);
+
+  /* Enable mouse interrupts */
+  mouse_wait(MS_WAIT_SIGNAL);
+  outb(0x20, 0x64);
+  mouse_wait(MS_WAIT_DATA);
+  status=(inb(0x60) | 2);
+  mouse_wait(MS_WAIT_SIGNAL);
+  outb(0x60, 0x64);
+  mouse_wait(MS_WAIT_SIGNAL);
+  outb(status, 0x60);
+
+  /* Use default settings */
+  mouse_write(0xF6);
+  mouse_read();  /* Acknowledge */
+
+  /* Enable mouse */
+  mouse_write(0xF4);
+  mouse_read();  /* Acknowledge */
+
+  /* Install handler */
+  install_mouse_IRQ_handler();
+}
+
+/*
  * Called each time the system timer advances
  */
 void kernel_time_tick()
 {
+  uint i;
+
   /* Turn off floppy disk motors. Need to do this
    * manually since some computers use the PIT to
    * control this, but the PIT is now being used as
    * system timer */
-  uint i;
   for(i=0; i<2; i++) {
     if(disk_info[i].last_access != 0 &&
       system_timer_ms-disk_info[i].last_access > 3000) {
@@ -467,6 +655,7 @@ void kernel_time_tick()
       i++;
     }
   }
+
   return;
 }
 
@@ -480,8 +669,18 @@ void kernel()
   uint i;
   uint n;
 
+  /* Init heap */
+  heap_init();
+
+  /* Init far memory */
+  lmem_init();
+
   /* Some initialization is still needed */
-  io_set_text_mode();
+  if(graphics_mode) {
+    io_set_graphics_mode();
+  } else {
+    io_set_text_mode();
+  }
   io_show_cursor();
   io_clear_screen();
 
@@ -510,9 +709,9 @@ void kernel()
 
     /* Use retrieved data if success */
     if(result == 0) {
-      disk_info[i].size = ((uint32_t)disk_info[i].sectors *
-        (uint32_t)disk_info[i].sides * (uint32_t)disk_info[i].cylinders) /
-        ((uint32_t)1048576 / (uint32_t)BLOCK_SIZE);
+      disk_info[i].size = ((ul_t)disk_info[i].sectors *
+        (ul_t)disk_info[i].sides * (ul_t)disk_info[i].cylinders) /
+        (1048576L / (ul_t)BLOCK_SIZE);
 
       disk_info[i].last_access = system_timer_ms;
 
@@ -530,12 +729,6 @@ void kernel()
     }
   }
 
-  /* Init heap */
-  heap_init();
-
-  /* Init far memory */
-  lmem_init();
-
   /* Init FS info */
   fs_init_info();
 
@@ -543,7 +736,10 @@ void kernel()
   PIC_init();
 
   /* Init timer at 100 Hz */
-  timer_init(100);
+  timer_init(100L);
+
+  /* Init mouse */
+  mouse_init();
 
   putstr("Starting...\n\r");
   debugstr("Starting...\n\r");
@@ -735,14 +931,14 @@ void kernel()
           if(disk_info[i].size) {
             putstr("%s %s(%UMB)   Disk size: %UMB\n\r",
               disk_to_string(n), disk_info[i].fstype == FS_TYPE_NSFS ? "NSFS" : "UNKN",
-              (uint32_t)blocks_to_MB(disk_info[i].fssize), disk_info[i].size);
+              (ul_t)blocks_to_MB(disk_info[i].fssize), disk_info[i].size);
           }
         }
         putstr("\n\r");
         putstr("System disk: %s\n\r", disk_to_string(system_disk));
         putstr("Serial port status: %s\n\r", serial_status & 0x80 ? "Error" : "Enabled");
         putstr("A20 Line status: %s\n\r", a20_enabled ? "Enabled" : "Disabled");
-        putstr("Timer frequency: %UHz\n\r", IRQ0_frequency);
+        putstr("Timer frequency: %UHz\n\r", system_timer_freq);
         putstr("System time alive: %Ums\n\r", system_timer_ms);
         putstr("\n\r");
       } else {
@@ -914,9 +1110,10 @@ void kernel()
       if(argc == 1) {
         putstr("\n\r");
         putstr("debug: %s       - output debug info through serial port\n\r", serial_debug ? " enabled" : "disabled");
+        putstr("graphics: %s    - use graphics mode\n\r", graphics_mode ? " enabled" : "disabled");
         putstr("\n\r");
-      } else if(argc == 3 && /* Easter egg */
-        strcmp(argv[1], "debug") == 0) {
+      } else if(argc == 3) {
+        if(strcmp(argv[1], "debug") == 0) {
           if(strcmp(argv[2], "enabled") == 0) {
             serial_debug = 1;
           } else if(strcmp(argv[2], "disabled") == 0) {
@@ -924,6 +1121,19 @@ void kernel()
           } else {
             putstr("Invalid value. Valid values are: enabled, disabled\n\r");
           }
+        } else {
+          if(strcmp(argv[1], "graphics") == 0) {
+            if(strcmp(argv[2], "enabled") == 0) {
+              io_set_graphics_mode();
+              io_set_cursor_pos(0, 0);
+            } else if(strcmp(argv[2], "disabled") == 0) {
+              io_set_text_mode();
+              io_set_cursor_pos(0, 0);
+            } else {
+              putstr("Invalid value. Valid values are: enabled, disabled\n\r");
+            }
+          }
+        }
       } else {
         putstr("usages:\n\rconfig\n\rconfig <debug> <enabled|disabled>");
       }

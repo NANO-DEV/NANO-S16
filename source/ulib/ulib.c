@@ -29,6 +29,26 @@ uchar getLO(uint c)
 }
 
 /*
+ * Generate "random" number
+ * PRNG based on the middle-square method
+ */
+uint rand()
+{
+  static ul_t seed = 0;
+
+  if(seed == 0) {
+    syscall(SYSCALL_CLK_GET_MILISEC, &seed);
+    seed += 0x11111111L;
+  }
+
+  seed = seed*seed;
+  seed &= 0x00FFFF00L;
+  seed = seed >> 8;
+
+  return (uint)seed;
+}
+
+/*
  * Format and output a string char by char
  * calling an outchar_function for each output char
  */
@@ -39,10 +59,10 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
   while(*format) {
     if(*format == '%') {
       uchar digit[D_STR_SIZE];
-      uint32_t value32 = *(uint32_t*)(args);
-      uint32_t value = *(uint*)(args++);
-      uint32_t is_negative = (value & 0x8000);
-      uint32_t base = 0;
+      ul_t value32 = *(ul_t*)(args);
+      ul_t value = *(uint*)(args++);
+      ul_t is_negative = (value & 0x8000);
+      ul_t base = 0;
       uint  n_digits = 0;
       digit[D_STR_SIZE-1] = 0;
 
@@ -51,7 +71,7 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
       if(*format == 'd') {
         base = 10;
         if(is_negative) {
-          value = -value;
+          value = -(int)value;
         }
       } else if(*format == 'u') {
         base = 10;
@@ -62,10 +82,18 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
       } else if(*format == 'x') {
         base = 16;
         n_digits = 4;
+      } else if(*format == 'X') {
+        value = value32;
+        base = 16;
+        n_digits = 8;
+        args++;
       } else if(*format == 's') {
         while(*(uchar*)value) {
           outchar(*(uchar*)(value++));
         }
+        format++;
+      } else if(*format == 'c') {
+        outchar((uchar)value);
         format++;
       }
 
@@ -73,13 +101,13 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
         uint n = 0;
 
         do {
-          uint32_t d = (value % base);
+          ul_t d = (value % base);
           n++;
           digit[D_STR_SIZE-1-n] = (d<=9 ? '0'+d : 'A'+d-10);
           value = value / base;
         } while((value && n < D_STR_SIZE-1) || (n < n_digits));
 
-        if(*format == 'x') {
+        if(*format == 'x' || *format == 'X') {
           n++;
           digit[D_STR_SIZE-1-n] = 'x';
           n++;
@@ -102,11 +130,24 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
 }
 
 /*
+ * Get mouse state
+ */
+void get_mouse_state(uint mode, uint* x, uint* y, uint* b)
+{
+  struct TSYSCALL_POSATTR pa;
+  pa.attr = mode;
+  syscall(SYSCALL_IO_GET_MOUSE_STATE, &pa);
+  *x = pa.x;
+  *y = pa.y;
+  *b = pa.c;
+}
+
+/*
  * Send a character to the serial port
  */
 void sputchar(uchar c)
 {
-  syscall(SYSCALL_IO_OUT_CHAR_SERIAL, (void*)&c);
+  syscall(SYSCALL_IO_OUT_CHAR_SERIAL, &c);
 }
 
 /*
@@ -130,7 +171,7 @@ uchar sgetchar()
  */
 void debugchar(uchar c)
 {
-  syscall(SYSCALL_IO_OUT_CHAR_DEBUG, (void*)&c);
+  syscall(SYSCALL_IO_OUT_CHAR_DEBUG, &c);
 }
 
 /*
@@ -142,12 +183,28 @@ void debugstr(uchar* format, ...)
 }
 
 /*
+ * Get video mode
+ */
+uint get_video_mode()
+{
+  return syscall(SYSCALL_IO_GET_VIDEO_MODE, 0);
+}
+
+/*
+ * Set video mode
+ */
+void set_video_mode(uint mode)
+{
+  syscall(SYSCALL_IO_SET_VIDEO_MODE, &mode);
+}
+
+/*
  * Get screen size
  */
-void get_screen_size(uint* width, uint* height)
+void get_screen_size(uint mode, uint* width, uint* height)
 {
   struct TSYSCALL_POSITION ps;
-  ps.x = 0;
+  ps.x = mode;
   ps.y = 0;
   ps.px = width;
   ps.py = height;
@@ -163,11 +220,55 @@ void clear_screen()
 }
 
 /*
+ * Draw a pixel in graphics mode
+ */
+void set_pixel(uint x, uint y, uint color)
+{
+  struct TSYSCALL_POSATTR ca;
+  ca.x = x;
+  ca.y = y;
+  ca.c = color;
+  ca.attr = 0;
+  syscall(SYSCALL_IO_SET_PIXEL, &ca);
+}
+
+/*
+ * Draw a char in graphics mode
+ */
+void draw_char(uint x, uint y, uint c, uint color)
+{
+  struct TSYSCALL_POSATTR ca;
+  ca.x = x;
+  ca.y = y;
+  ca.c = c;
+  ca.attr = color;
+  syscall(SYSCALL_IO_DRAW_CHAR, &ca);
+}
+
+/*
+ * Draw a map in graphics mode
+ */
+void draw_map(uint x, uint y, uchar* buff, uint width, uint height)
+{
+  struct TSYSCALL_POSATTR ca;
+  uint i, j;
+  for(j=0; j<height; j++) {
+    for(i=0; i<width; i++) {
+      ca.x = x+i;
+      ca.y = y+j;
+      ca.c = buff[j*width + i];
+      ca.attr = 0;
+      syscall(SYSCALL_IO_SET_PIXEL, &ca);
+    }
+  }
+}
+
+/*
  * Send a character to the screen
  */
 void putchar(uchar c)
 {
-  syscall(SYSCALL_IO_OUT_CHAR, (void*)&c);
+  syscall(SYSCALL_IO_OUT_CHAR, &c);
 }
 
 /*
@@ -181,11 +282,11 @@ void putstr(uchar* format, ...)
 /*
  * Send a character to the screen with attr
  */
-void putchar_attr(uint x, uint y, uchar c, uchar attr)
+void putchar_attr(uint col, uint row, uchar c, uchar attr)
 {
-  struct TSYSCALL_CHARATTR ca;
-  ca.x = x;
-  ca.y = y;
+  struct TSYSCALL_POSATTR ca;
+  ca.x = col;
+  ca.y = row;
   ca.c = c;
   ca.attr = attr;
   syscall(SYSCALL_IO_OUT_CHAR_ATTR, &ca);
@@ -194,24 +295,24 @@ void putchar_attr(uint x, uint y, uchar c, uchar attr)
 /*
  * Get cursor position
  */
-void get_cursor_position(uint* x, uint* y)
+void get_cursor_position(uint* col, uint* row)
 {
   struct TSYSCALL_POSITION ps;
   ps.x = 0;
   ps.y = 0;
-  ps.px = x;
-  ps.py = y;
+  ps.px = col;
+  ps.py = row;
   syscall(SYSCALL_IO_GET_CURSOR_POS, &ps);
 }
 
 /*
  * Set cursor position
  */
-void set_cursor_position(uint x, uint y)
+void set_cursor_position(uint col, uint row)
 {
   struct TSYSCALL_POSITION ps;
-  ps.x = x;
-  ps.y = y;
+  ps.x = col;
+  ps.y = row;
   ps.px = 0;
   ps.py = 0;
   syscall(SYSCALL_IO_SET_CURSOR_POS, &ps);
@@ -248,7 +349,7 @@ uint getkey(uint mode)
  */
 uint getstr(uchar* str, uint max_count)
 {
-  uint x, y;
+  uint col, row;
   uint i = 0;
   uint k;
   uint p;
@@ -260,12 +361,12 @@ uint getstr(uchar* str, uint max_count)
   getkey(KM_CLEAR_BUFFER);
 
   /* Get cursor position and show it */
-  get_cursor_position(&x, &y);
+  get_cursor_position(&col, &row);
   set_show_cursor(SHOW_CURSOR);
 
   do {
     /* Get a key press (wait for it)*/
-    k = getkey(KM_WAIT_KEY);
+    k = getkey(KM_NO_WAIT);
 
     /* Backspace */
     if(k == KEY_BACKSPACE) {
@@ -306,13 +407,13 @@ uint getstr(uchar* str, uint max_count)
 
     /* Now hide cursor and redraw string at initial position */
     set_show_cursor(HIDE_CURSOR);
-    set_cursor_position(x, y);
+    set_cursor_position(col, row);
     for(p=0; p<max_count; p++) {
       putchar(str[p]);
     }
 
     /* Reset cursor */
-    set_cursor_position(x+i, y);
+    set_cursor_position(col+i, row);
     set_show_cursor(SHOW_CURSOR);
   } while(k != KEY_RETURN);
 
@@ -510,9 +611,9 @@ void mfree(void* ptr)
 /*
  * Copy size bytes from src to dest (far memory)
  */
-uint32_t lmemcpy(lptr dst, uint32_t dst_offs, lptr src, uint32_t src_offs, uint32_t size)
+ul_t lmemcpy(lp_t dst, ul_t dst_offs, lp_t src, ul_t src_offs, ul_t size)
 {
-  uint32_t i = 0;
+  ul_t i = 0;
   uint rdir;
   struct TSYSCALL_LMEM ldst;
   struct TSYSCALL_LMEM lsrc;
@@ -525,7 +626,7 @@ uint32_t lmemcpy(lptr dst, uint32_t dst_offs, lptr src, uint32_t src_offs, uint3
   }
 
   for(i=0; i<size; i++) {
-    lptr c = rdir ? size-(uint32_t)1-i : i;
+    lp_t c = rdir ? size-1L-i : i;
     lsrc.dst = src + src_offs + c;
     ldst.dst = dst + dst_offs + c;
     ldst.n = syscall(SYSCALL_LMEM_GET, &lsrc);
@@ -538,9 +639,9 @@ uint32_t lmemcpy(lptr dst, uint32_t dst_offs, lptr src, uint32_t src_offs, uint3
 /*
  * Set size bytes from src to value (far memory)
  */
-uint32_t lmemset(lptr dest, uchar value, uint32_t size)
+ul_t lmemset(lp_t dest, uchar value, ul_t size)
 {
-  uint32_t i = 0;
+  ul_t i = 0;
   struct TSYSCALL_LMEM lm;
   lm.n = value;
 
@@ -554,7 +655,7 @@ uint32_t lmemset(lptr dest, uchar value, uint32_t size)
 /*
  * Allocate size bytes of contiguous far memory
  */
-lptr lmalloc(uint32_t size)
+lp_t lmalloc(ul_t size)
 {
   struct TSYSCALL_LMEM lm;
   lm.dst = 0;
@@ -566,7 +667,7 @@ lptr lmalloc(uint32_t size)
 /*
  * Free allocated far memory
  */
-void lmfree(lptr ptr)
+void lmfree(lp_t ptr)
 {
   struct TSYSCALL_LMEM lm;
   lm.dst = ptr;
@@ -695,9 +796,22 @@ void time(struct TIME* t)
 /*
  * Get system timer, miliseconds
  */
-uint32_t get_timer()
+ul_t get_timer()
 {
-  uint32_t timer_ms;
+  ul_t timer_ms;
   syscall(SYSCALL_CLK_GET_MILISEC, &timer_ms);
   return timer_ms;
+}
+
+/*
+ * Wait an amount of miliseconds
+ */
+void wait(uint miliseconds)
+{
+  ul_t initial_timer, timer;
+  syscall(SYSCALL_CLK_GET_MILISEC, &initial_timer);
+  timer = initial_timer;
+  while(timer < initial_timer + miliseconds) {
+    syscall(SYSCALL_CLK_GET_MILISEC, &timer);
+  }
 }
