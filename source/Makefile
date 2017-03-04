@@ -15,11 +15,11 @@ NFLAGS  := -w+orphan-labels -f as86 # generate as86 object file
 
 all: $(BOOTDIR)boot.bin kernel.n16 programs
 
-programs: $(PROGDIR)edit.bin
+programs: $(PROGDIR)edit.bin $(PROGDIR)nas.bin
 
 $(PROGDIR)%.bin: $(PROGDIR)%.c $(ULIBDIR)ulib.o $(ULIBDIR)x86.o
 	$(CC86) $(CFLAGS) -o $(PROGDIR)$*.o -c $(PROGDIR)$*.c
-	$(LD86) $(LDFLAGS) -T 0xD000 -o $@ $(ULIBDIR)x86.o $(PROGDIR)$*.o $(ULIBDIR)ulib.o
+	$(LD86) $(LDFLAGS) -T 0xC000 -o $@ $(ULIBDIR)x86.o $(PROGDIR)$*.o $(ULIBDIR)ulib.o
 
 $(BOOTDIR)boot.bin: $(BOOTDIR)boot.s
 	$(NASM) -O0 -w+orphan-labels -f bin -o $@ $(BOOTDIR)boot.s

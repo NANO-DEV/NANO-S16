@@ -41,7 +41,7 @@ extern _video_enable, _video_disable
 
 ;
 ; void io_set_text_mode()
-; Set the text mode to 80x25 16 colors
+; Set the text mode to 80x50 16 colors
 ; and cursor shape to blinking
 ;
 global _io_set_text_mode
@@ -454,7 +454,7 @@ _io_out_char_serial:
   mov  dx, 0            ; Port number
   mov  bx, sp           ; Save the stack pointer
   mov  al, [bx+8]       ; Get char from string
-  mov  ah, 0x01         ; int 14h ah=01h: write
+  mov  ah, 0x01         ; int 0x14 ah=0x01: write
   int  0x14             ; Send it
 
   mov byte [_serial_status], ah
@@ -463,33 +463,6 @@ _io_out_char_serial:
   pop  dx
   pop  ax
   pop  bx
-  ret
-
-
-;
-; uchar io_in_char_serial()
-; Read a char from serial port
-;
-global  _io_in_char_serial
-_io_in_char_serial:
-  push dx
-  push ax
-
-  test byte [_serial_status], 0x80
-  jne  .skip
-  mov  dx, 0            ; Port number
-  mov  al, 0
-  mov  ah, 0x02         ; int 14h ah=02h: read
-  int  0x14             ; Get it
-
-  test byte ah, 0x80
-  mov  ah, 0
-  je   .skip
-  mov  ax, 0
-
-.skip:
-  pop  dx
-  pop  dx
   ret
 
 extern _serial_status
@@ -618,7 +591,7 @@ _turn_off_fd_motors:
   push ax
   push dx
 
-  mov  dx, 3F2h
+  mov  dx, 0x3F2
   mov  al, 0
   out  dx, al
 
@@ -1357,17 +1330,20 @@ _install_ISR:
 SYS_ISR:
   pushad
 
-  push cx
+  mov  bx, sp
+  mov  ax, [bx+32+6+4]  ; Get param 0
   push ax
-  call _kernel_service
+  mov  ax, [bx+32+6+2]  ; Get param 1
+  push ax
+  call _kernel_service  ; Call
   pop  cx
   pop  cx
-  mov  [result], ax
+  mov  [.result], ax
 
   popad
-  mov  ax, [result]
+  mov  ax, [.result]
 
   iret
 
-result dw 0             ; Result of ISR
+.result dw 0             ; Result of ISR
 extern _kernel_service

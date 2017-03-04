@@ -19,12 +19,12 @@ ul_t system_timer_freq = 0; /* Actual frequency of timer */
 ul_t system_timer_ms = 10; /* ms since timer initialized */
 /* Initialize to 10 ms so all 0 timestamps are outdated */
 
-/* Mouse info */
+/* Mouse state */
 uint mouse_x = 0;
 uint mouse_y = 0;
 uint mouse_b = 0; /* Buttons */
 
-uint graphics_mode = 1;
+uint graphics_mode = 1;  /* Graphics mode enabled/disabled (default) */
 uint screen_width_c  = 80; /* Screen size (text mode cells) */
 uint screen_height_c = 50;
 uint screen_width_px  = 800; /* Screen size (graphics mode pixels) */
@@ -40,13 +40,13 @@ struct DISKINFO disk_info[MAX_DISK];  /* Disk info */
  * Extern program call
  */
 typedef uint extern_main(uint argc, uchar* argv[]);
-#define EXTERN_PROGRAM_MEMLOC 0xD000
+#define EXTERN_PROGRAM_MEMLOC 0xC000
 
 /*
  * Heap related
  */
 #define HEAP_MAX_BLOCK   0x0080U
-#define HEAP_MEM_SIZE    0x2000U
+#define HEAP_MEM_SIZE    0x1000U
 #define HEAP_BLOCK_SIZE  (HEAP_MEM_SIZE / HEAP_MAX_BLOCK)
 
 static uchar HEAPADDR[HEAP_MEM_SIZE]; /* Allocate heap memory */
@@ -130,7 +130,7 @@ static heap_free(void* ptr)
 #define LMEM_START 0x00018000L
 #define LMEM_LIMIT 0x000A0000L
 #define LMEM_BLOCK_SIZE 0x10L
-#define LMEM_MAX_BLOCK 64
+#define LMEM_MAX_BLOCK 32
 struct LMEMBLOCK {
   lp_t start;
   ul_t size;
@@ -559,7 +559,7 @@ void mouse_handler()
 #define MS_WAIT_SIGNAL 1
 void mouse_wait(uchar type)
 {
-  uint time_out = 0xFFFF;
+  uint time_out = 0x000F;
   if(type == MS_WAIT_DATA) {
     while(time_out--) {
       if((inb(0x64) & 1) == 1) {
@@ -617,7 +617,7 @@ void mouse_init()
   mouse_wait(MS_WAIT_SIGNAL);
   outb(0x20, 0x64);
   mouse_wait(MS_WAIT_DATA);
-  status=(inb(0x60) | 2);
+  status = (inb(0x60)|2);
   mouse_wait(MS_WAIT_SIGNAL);
   outb(0x60, 0x64);
   mouse_wait(MS_WAIT_SIGNAL);
@@ -633,6 +633,16 @@ void mouse_init()
 
   /* Install handler */
   install_mouse_IRQ_handler();
+}
+
+/* Read serial port */
+#define COM1_PORT 0x3F8
+uchar io_in_char_serial()
+{
+  if(inb(COM1_PORT+5) & 0x01) {
+    return inb(COM1_PORT);
+  }
+  return 0;
 }
 
 /*
@@ -1042,21 +1052,25 @@ void kernel()
 
     } else if(strcmp(argv[0], "read") == 0) {
       /* Read command: read a file */
-      if(argc == 2) {
+      if(argc==2 || (argc==3 && strcmp(argv[1],"hex")==0)) {
         uint offset = 0;
         uchar buff[128];
         memset(buff, 0, sizeof(buff));
         /* While it can read the file, print it */
-        while(result = fs_read_file(buff, argv[1], offset, sizeof(buff))) {
+        while(result = fs_read_file(buff, argv[argc-1], offset, sizeof(buff))) {
           if(result >= ERROR_ANY) {
             putstr("\n\rThere was an error reading input file\n\r");
             break;
           }
           for(i=0; i<result; i++) {
-            putchar(buff[i]);
-            /* Add '\r' after '\n' chars */
-            if(buff[i] == '\n') {
-              putchar('\r');
+            if(argc==2) {
+              putchar(buff[i]);
+              /* Add '\r' after '\n' chars */
+              if(buff[i] == '\n') {
+                putchar('\r');
+              }
+            } else {
+              putstr("%2x ", buff[i]);
             }
           }
           memset(buff, 0, sizeof(buff));
@@ -1064,7 +1078,7 @@ void kernel()
         }
         putstr("\n\r");
       } else {
-        putstr("usage: read <path>\n\r");
+        putstr("usage: read [hex] <path>\n\r");
       }
 
     } else if(strcmp(argv[0], "time") == 0) {
@@ -1197,8 +1211,12 @@ void kernel()
         /* Found */
         if(entry.flags & T_FILE) {
           /* It's a file: load it */
-          result = fs_read_file(EXTERN_PROGRAM_MEMLOC, prog_file_name, 0,
-            min((uint)entry.size, 0xFFFF - EXTERN_PROGRAM_MEMLOC));
+          uint mem_size = min((uint)entry.size, 0xFFFF - EXTERN_PROGRAM_MEMLOC);
+          if(mem_size < (uint)entry.size) {
+            putstr("not enough memory\n\r");
+            continue;
+          }
+          result = fs_read_file(EXTERN_PROGRAM_MEMLOC, prog_file_name, 0, mem_size);
         } else {
           /* It's not a file: error */
           result = ERROR_NOT_FOUND;

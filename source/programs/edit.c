@@ -187,7 +187,9 @@ ul_t linecol_to_buffer_offset(lp_t buff, uint col, uint line)
  */
 uint main(uint argc, uchar* argv[])
 {
-  uchar* title_info = "F1:Save ESC:Exit"; /* const */
+  uchar* title_info = "L:     F1:Save ESC:Exit"; /* const */
+  uchar  line_ibcd[4]; /* To store line number digits */
+  uint   ibcdt;
 
   uint i = 0;
   uint n = 0;
@@ -405,7 +407,7 @@ uint main(uint argc, uchar* argv[])
       }
 
     /* Any other key but esc: insert char at cursor */
-  } else if(k != KEY_ESC && k != 0) {
+    } else if(k != KEY_ESC && k != 0) {
 
       if(k == KEY_RETURN) {
         k = '\n';
@@ -426,6 +428,25 @@ uint main(uint argc, uchar* argv[])
     } else if(line > current_line + SCREEN_HEIGHT - 2) {
       current_line = line - SCREEN_HEIGHT + 2;
     }
+
+    /* Update line number in title */
+    /* Compute bcd value (reversed) */
+    ibcdt = min(9999, line+1);
+    n = SCREEN_WIDTH-strlen(title_info)+2;
+    for(i=0; i<4; i++) {
+      line_ibcd[i] = ibcdt%10;
+      ibcdt /= 10;
+      if(ibcdt==0) {
+        ibcdt = i;
+        break;
+      }
+    }
+    /* Display it */
+    for(i=0; i<4; i++) {
+      uchar c = i<=ibcdt?line_ibcd[ibcdt-i]+'0':' ';
+      putchar_attr(n+i, 0, c, TITLE_ATTRIBUTES);
+    }
+
     set_show_cursor(HIDE_CURSOR);
     show_buffer_at_line(buff, current_line);
     line -= current_line;

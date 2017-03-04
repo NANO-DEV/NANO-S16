@@ -580,7 +580,7 @@ uint fs_read_file(uchar* buff, uchar* path, uint offset, uint count)
 
       /* Read in buffer */
       result = read_disk(disk, (uint)entry.ref[block % SFS_ENTRYREFS], offset,
-        min(BLOCK_SIZE - offset, count), &(buff[read]), disk);
+        min(BLOCK_SIZE-offset, count-read), &(buff[read]), disk);
 
       if(result != 0) {
         return ERROR_IO;
@@ -1159,7 +1159,8 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
       offset -= SFS_ENTRYREFS*BLOCK_SIZE;
       current_block -= SFS_ENTRYREFS;
     }
-    result = write_disk(disk, (uint)entry.ref[current_block], offset % BLOCK_SIZE, to_copy, &buff[written]);
+    result = write_disk(disk, (uint)entry.ref[current_block],
+      offset%BLOCK_SIZE, to_copy, &buff[written]);
     if(result != 0) {
       return result;
     }

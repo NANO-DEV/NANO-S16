@@ -15,7 +15,7 @@ ___mkargv:
 extern _main
 
 
-INT_CODE equ 070h
+INT_CODE equ 0x70
 
 ;
 ; uint syscall(uint s, void* p)
@@ -23,19 +23,7 @@ INT_CODE equ 070h
 ;
 global _syscall
 _syscall:
-  push cx
-  push bx
-  push ax
-
-  mov  bx, sp           ; Save the stack pointer
-  mov  ax, [bx+8]       ; Get parameters
-  mov  cx, [bx+10]
-  int  INT_CODE         ; Call it
-
-  pop  bx
-  pop  bx
-  pop  cx
-
+  int  INT_CODE         ; Interrupt
   ret
 
 

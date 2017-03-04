@@ -56,6 +56,8 @@ uint rand()
 typedef void *outchar_function(uchar);
 void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
 {
+  uint char_count = 0;
+
   while(*format) {
     if(*format == '%') {
       uchar digit[D_STR_SIZE];
@@ -63,10 +65,15 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
       ul_t value = *(uint*)(args++);
       ul_t is_negative = (value & 0x8000);
       ul_t base = 0;
-      uint  n_digits = 0;
+      uint n_digits = 0;
       digit[D_STR_SIZE-1] = 0;
 
       format++;
+
+      while(*format>='0' && *format<='9') {
+        n_digits=n_digits*10 + *format-'0';
+        format++;
+      }
 
       if(*format == 'd') {
         base = 10;
@@ -81,19 +88,28 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
         args++;
       } else if(*format == 'x') {
         base = 16;
-        n_digits = 4;
+        n_digits = n_digits?n_digits:4;
       } else if(*format == 'X') {
         value = value32;
         base = 16;
-        n_digits = 8;
+        n_digits = n_digits?n_digits:8;
         args++;
       } else if(*format == 's') {
         while(*(uchar*)value) {
           outchar(*(uchar*)(value++));
+          char_count++;
         }
         format++;
       } else if(*format == 'c') {
-        outchar((uchar)value);
+        if(n_digits) {
+          while(char_count<n_digits) {
+            outchar((uchar)value);
+            char_count++;
+          }
+        } else {
+          outchar((uchar)value);
+          char_count++;
+        }
         format++;
       }
 
@@ -120,11 +136,13 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
         value = &(digit[D_STR_SIZE-1-n]);
         while(*(uchar*)value) {
           outchar(*(uchar*)(value++));
+          char_count++;
         }
         format++;
       }
     } else {
       outchar(*(format++));
+      char_count++;
     }
   }
 }
@@ -563,6 +581,59 @@ uint strchr(uchar* src, uchar c)
     n++;
   }
   return 0;
+}
+
+/*
+ * Parse string uint
+ */
+uint stou(uchar* src)
+{
+  uint base = 10;
+  uint value = 0;
+
+  /* Is hex? */
+  if(src[0]=='0' && src[1]=='x') {
+    src += 2;
+    base = 16;
+  }
+
+  while(*src) {
+    uint digit = *src<='9'? *src-'0' :
+      *src>='a'? 0xA+*src-'a' : 0xA+*src-'A';
+
+    value = value*base + digit;
+    src++;
+  }
+  return value;
+}
+
+/*
+ * Is string uint?
+ */
+uint sisu(uchar* src)
+{
+  uint base = 10;
+
+  if(!src[0]) {
+    return 0;
+  }
+
+  /* Is hex? */
+  if(src[0]=='0' && src[1]=='x' && src[2]) {
+    src += 2;
+    base = 16;
+  }
+
+  while(*src) {
+    uint digit = *src<='9'? *src-'0' :
+      *src>='a'? 0xA+*src-'a' : 0xA+*src-'A';
+
+    if(digit>=base) {
+      return 0;
+    }
+    src++;
+  }
+  return 1;
 }
 
 /*

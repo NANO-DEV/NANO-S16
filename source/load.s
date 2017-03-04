@@ -14,7 +14,7 @@ global main, _main
 main:
 _main:
   mov  ax, LOADSEG
-  mov  ds, ax                 ; ds = header
+  mov  ds, ax
   mov  es, ax
   cli                         ; Ignore interrupts while stack is not build
   mov  ss, ax
@@ -60,7 +60,7 @@ _main:
   mov  al, [es:bx]            ; then the memory wrapped around
   cmp  al, 0x00
 
-  pop  es                      ; Restore segment, enable interrupts
+  pop  es                     ; Restore segment, enable interrupts
   sti
   jne  a20_failed             ; couldn't activate the gate
 

@@ -141,11 +141,12 @@ move fd0/doc.txt hd0/documents/doc.txt
 ```
 
 ####READ
-Display the contents of a file. The path of the file to display is expected as only parameter.
+Display the contents of a file. The path of the file to display is expected as only parameter. Optionally, if `hex`  is passed as first parameter, contents will be dumped in hexadecimal instead of ASCII.
 
 Example:
 ```
 read documents/doc.txt
+read hex sample.bin
 ```
 
 ####SHUTDOWN
@@ -160,9 +161,9 @@ shutdown reboot
 Show current date and time.
 
 
-##User programs development
+##User programs cross development
 
-The easiest way to develop new user programs is:
+The easiest way to cross develop new user programs is:
 
 1. Setup the development system so it contains a copy of the full source tree and it's able to build and test it. See the building and testing pages.
 

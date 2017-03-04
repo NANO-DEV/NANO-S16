@@ -27,7 +27,7 @@ start:
   mov  ah, 8            ; Get disk parameters
   int  13h
   jc   error
-  and  cx, 3Fh          ; Maximum sector number
+  and  cx, 0x3F         ; Maximum sector number
   mov  [SECTORS], cx    ; Sector numbers start at 1
   movzx dx, dh          ; Maximum head number
   add  dx, 1            ; Head numbers start at 0 - add 1 for total
@@ -55,7 +55,7 @@ start:
   pusha
 
   stc                   ; Some BIOSes do not set properly on error
-  int  13h              ; Read sectors
+  int  0x13             ; Read sectors
 
   jnc  .read_finished
   call disk_reset       ; Reset controller and try again
@@ -94,7 +94,7 @@ disk_reset:
   mov  ax, 0
   mov  dl, byte [BDISK_LOC]
   stc
-  int  13h
+  int  0x13
   pop  dx
   pop  ax
   ret
@@ -109,7 +109,7 @@ disk_lba_to_hts:
 
   mov  dx, 0            ; First the sector
   div  word [SECTORS]   ; Sectors per track
-  add  dl, 01h          ; Physical sectors start at 1
+  add  dl, 0x01         ; Physical sectors start at 1
   mov  cl, dl           ; Sectors belong in CL for int 13h
   mov  ax, bx
 
@@ -139,13 +139,13 @@ error:
 
 print_string:           ; Output string in SI to screen
   pusha
-  mov  ah, 0Eh          ; int 10h teletype function
+  mov  ah, 0x0E         ; int 10h teletype function
 
 .repeat:
   lodsb                 ; Get char from string
   cmp  al, 0
   je   .done					  ; If char is zero, end of string
-  int  10h              ; Otherwise, print it
+  int  0x10             ; Otherwise, print it
   jmp  short .repeat
 
 .done:
@@ -158,4 +158,4 @@ print_string:           ; Output string in SI to screen
 ; END OF BOOT SECTOR
 
   times 510-($-$$) db 0  ; Pad remainder of boot sector with zeros
-  dw 0AA55h              ; Boot signature
+  dw 0xAA55              ; Boot signature

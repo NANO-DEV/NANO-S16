@@ -346,6 +346,22 @@ uchar* strtok(uchar* src, uchar** next, uchar delim);
  */
 uint strchr(uchar* src, uchar c);
 
+/*
+ * Parse string uint. Can be hex "0x..." or dec
+ * Returns:
+ * - 0 if not possible
+ * - uint value of src otherwise
+ */
+uint stou(uchar* src);
+
+/*
+ * Parse string and return 1 if it's an uint.
+ * Returns:
+ * - 0 if src is not an uint
+ * - 1 if it is
+ */
+uint sisu(uchar* src);
+
 
 
 /*
