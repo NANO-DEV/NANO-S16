@@ -13,7 +13,7 @@ CFLAGS  := -0 -O -ansi -I$(INCDIR) # 8086 target, optimize and ansi C
 LDFLAGS := -d -s # delete the header and strip symbols
 NFLAGS  := -w+orphan-labels -f as86 # generate as86 object file
 
-all: $(BOOTDIR)boot.bin kernel.n16 programs
+all: $(BOOTDIR)boot.bin kernel.n16 programs net
 
 programs: $(PROGDIR)edit.bin $(PROGDIR)nas.bin
 
@@ -24,8 +24,8 @@ $(PROGDIR)%.bin: $(PROGDIR)%.c $(ULIBDIR)ulib.o $(ULIBDIR)x86.o
 $(BOOTDIR)boot.bin: $(BOOTDIR)boot.s
 	$(NASM) -O0 -w+orphan-labels -f bin -o $@ $(BOOTDIR)boot.s
 
-kernel.n16: load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o
-	$(LD86) $(LDFLAGS) -o $@ load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o
+kernel.n16: load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o net.o
+	$(LD86) $(LDFLAGS) -o $@ load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o net.o
 
 load.o: load.s
 	$(NASM) $(NFLAGS) -o $@ load.s
@@ -48,9 +48,12 @@ kernel.o: kernel.h kernel.c types.h syscall.h $(ULIBDIR)ulib.h fs.h
 fs.o: fs.h fs.c types.h kernel.h $(ULIBDIR)ulib.h
 	$(CC86) $(CFLAGS) -o $@ -c fs.c
 
+net.o: net.h net.c
+	$(CC86) $(CFLAGS) -o $@ -c net.c
+
 clean:
 	@find . -name "*.o" -type f -delete
 	@find . -name "*.bin" -type f -delete
 	@find . -name "*.n16" -type f -delete
 
-.PHONY: all programs clean
+.PHONY: all programs net clean

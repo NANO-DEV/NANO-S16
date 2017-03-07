@@ -374,6 +374,12 @@ uint memcpy(uchar* dst, uchar* src, uint size);
  */
 uint memset(uchar* dst, uchar value, uint size);
 
+/*
+ * Compare size bytes from mem1 and mem2
+ * Returns 0 if they are the same
+ */
+uint memcmp(uchar* mem1, uchar* mem2, uint size);
+
 
 /*
  * Allocate size bytes of contiguous near memory.

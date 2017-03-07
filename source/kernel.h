@@ -7,7 +7,7 @@
 
 #define OS_VERSION_HI 2
 #define OS_VERSION_LO 0
-#define OS_BUILD_NUM 11
+#define OS_BUILD_NUM 12
 
 /*
  * Hardware related disk information is handled by the kernel module.
@@ -32,15 +32,14 @@ struct DISKINFO {
     uint  cylinders;
     ul_t  size;        /* Disk size (MB) */
     ul_t  last_access; /* Last accessed time (system ms) */
-};
+} disk_info[MAX_DISK];
 
-extern struct DISKINFO disk_info[MAX_DISK]; /* Disks info */
-extern uchar system_disk;  /* System disk */
-extern uchar serial_status;  /* Serial port status */
+extern uchar system_disk; /* System disk */
+extern uchar serial_status; /* Serial port status */
 extern uchar a20_enabled; /* A20 line enabled */
 extern uint serial_debug; /* Debug info through serial port */
 
-extern uint graphics_mode;  /* Graphics mode enabled */
+extern uint graphics_mode; /* Graphics mode enabled */
 extern uint screen_width_px; /* Screen width (pixels) */
 extern uint screen_height_px; /* Screen height (pixels) */
 extern uint screen_width_c; /* Screen width (text) */

@@ -645,7 +645,7 @@ uint memcpy(uchar* dst, uchar* src, uint size)
   uint rdir = (src>dst)?0:1;
 
   for(i=0; i<size; i++) {
-    uint c = rdir?size-1-i:i;
+    uint c = rdir?size-(i+1):i;
     dst[c] = src[c];
   }
   return i;
@@ -661,6 +661,20 @@ uint memset(uchar* dst, uchar value, uint size)
     dst[i] = value;
   }
   return i;
+}
+
+/*
+ * Compare size bytes from mem1 and mem2
+ */
+uint memcmp(uchar* mem1, uchar* mem2, uint size)
+{
+  uint i = 0;
+  for(i=0; i<size; i++) {
+    if(mem1[i] != mem2[i]) {
+      return mem1[i]-mem2[i];
+    }
+  }
+  return 0;
 }
 
 /*

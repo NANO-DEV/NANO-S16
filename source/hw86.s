@@ -1136,6 +1136,42 @@ IRQ12_handler:
 extern _mouse_handler
 
 
+
+;
+; Handler for the IRQ9
+; Used by network
+;
+IRQ9_handler:
+	pushad
+  pushfd
+  push  ss
+  push  es
+  push  ds
+
+  cli
+  mov  ax, cs           ; Sometimes this is in an unknown state
+  mov  ds, ax           ; Still don't know why
+  mov  es, ax
+  mov  ss, ax
+
+  call _net_handler
+
+  mov  al, PIC_EOI
+  out  PORT_SPIC_COMMAND, al         ; Send the EOI to the PIC
+  out  PORT_MPIC_COMMAND, al         ; Send the EOI to the PIC
+
+
+  pop  ds
+  pop  es
+  pop  ss
+  popfd
+	popad
+
+	iret
+
+extern _net_handler
+
+
 ;
 ; void apm_shutdown()
 ;	Power off system using APM
@@ -1295,6 +1331,36 @@ _install_mouse_IRQ_handler:
   in   al, PORT_MPIC_DATA
   and  al, 11111101b
   out  PORT_MPIC_DATA, al
+
+  sti
+  pop  es
+  popa
+
+  ret
+
+
+;
+; void install_net_IRQ_handler()
+; Add routine to interrupt vector table (IRQ9)
+;
+global _install_net_IRQ_handler
+_install_net_IRQ_handler:
+  pusha
+  push es
+  cli
+
+  ; Install handler
+  mov  ax, 0
+  mov  es, ax
+  mov  dx, IRQ9_handler
+  mov  [es:(INT_CODE_SPIC_BASE+1)*4], dx
+  mov  ax, cs
+  mov  [es:(INT_CODE_SPIC_BASE+1)*4+2], ax
+
+  ; Set IRQ unmasked
+  in   al, PORT_SPIC_DATA
+  and  al, 11111101b
+  out  PORT_SPIC_DATA, al
 
   sti
   pop  es

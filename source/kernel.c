@@ -9,9 +9,10 @@
 #include "syscall.h"
 #include "fs.h"
 #include "video.h"
+#include "net.h"
 
-uchar serial_status = 0;  /* Serial port status */
-uint serial_debug = 0; /* Debug info through serial port */
+uchar serial_status = 0; /* Serial port status */
+uint serial_debug = 1; /* Debug info through serial port */
 
 uchar a20_enabled = 0; /* A20 line enabled */
 
@@ -751,6 +752,9 @@ void kernel()
   /* Init mouse */
   mouse_init();
 
+  /* Init network */
+  net_init();
+
   putstr("Starting...\n\r");
   debugstr("Starting...\n\r");
 
@@ -929,6 +933,7 @@ void kernel()
     } else if(strcmp(argv[0], "info") == 0) {
       /* Info command: show system info */
       if(argc == 1) {
+        net_test();
         putstr("\n\r");
         putstr("NANO S16 [Version %u.%u build %u]\n\r",
           OS_VERSION_HI, OS_VERSION_LO, OS_BUILD_NUM);
@@ -1119,12 +1124,37 @@ void kernel()
         putstr("usage: shutdown [reboot]\n\r");
       }
 
+    } else if(strcmp(argv[0], "net") == 0) {
+      /* Net command: Send or receive through network */
+      if(argc == 2 && strcmp(argv[1], "recv") == 0) {
+        uchar buff[64];
+        uchar src_ip[4];
+        uint  recv = net_recv(src_ip, buff, sizeof(buff));
+        buff[recv] = 0;
+        if(recv==0) {
+          putstr("Buffer is empty\n\r");
+        } else {
+          putstr("Received %s from %d.%d.%d.%d\n\r", buff,
+            src_ip[0], src_ip[1], src_ip[2], src_ip[3]);
+        }
+      } else if(argc == 4 && strcmp(argv[1], "send") == 0) {
+        uchar dst_ip[4];
+        str_to_ip(dst_ip, argv[2]);
+        net_send(dst_ip, argv[3], strlen(argv[3]));
+        putstr("Sent %s to %d.%d.%d.%d\n\r", argv[3],
+          dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3]);
+      } else {
+        putstr("usage: net <send <dst_ip> <word> | recv>\n\r");
+      }
+
     } else if(strcmp(argv[0], "config") == 0) {
       /* Time command: Show date and time */
       if(argc == 1) {
         putstr("\n\r");
         putstr("debug: %s       - output debug info through serial port\n\r", serial_debug ? " enabled" : "disabled");
         putstr("graphics: %s    - use graphics mode\n\r", graphics_mode ? " enabled" : "disabled");
+        putstr("net_IP: %u.%u.%u.%u\n\r", local_ip[0], local_ip[1], local_ip[2], local_ip[3]);
+        putstr("net_gate: %u.%u.%u.%u\n\r", local_gate[0], local_gate[1], local_gate[2], local_gate[3]);
         putstr("\n\r");
       } else if(argc == 3) {
         if(strcmp(argv[1], "debug") == 0) {
@@ -1135,18 +1165,20 @@ void kernel()
           } else {
             putstr("Invalid value. Valid values are: enabled, disabled\n\r");
           }
-        } else {
-          if(strcmp(argv[1], "graphics") == 0) {
-            if(strcmp(argv[2], "enabled") == 0) {
-              io_set_graphics_mode();
-              io_set_cursor_pos(0, 0);
-            } else if(strcmp(argv[2], "disabled") == 0) {
-              io_set_text_mode();
-              io_set_cursor_pos(0, 0);
-            } else {
-              putstr("Invalid value. Valid values are: enabled, disabled\n\r");
-            }
+        } else if(strcmp(argv[1], "graphics") == 0) {
+          if(strcmp(argv[2], "enabled") == 0) {
+            io_set_graphics_mode();
+            io_set_cursor_pos(0, 0);
+          } else if(strcmp(argv[2], "disabled") == 0) {
+            io_set_text_mode();
+            io_set_cursor_pos(0, 0);
+          } else {
+            putstr("Invalid value. Valid values are: enabled, disabled\n\r");
           }
+        } else if(strcmp(argv[1], "net_IP") == 0) {
+          str_to_ip(local_ip, argv[2]);
+        } else if(strcmp(argv[1], "net_gate") == 0) {
+          str_to_ip(local_gate, argv[2]);
         }
       } else {
         putstr("usages:\n\rconfig\n\rconfig <debug> <enabled|disabled>");

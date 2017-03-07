@@ -72,7 +72,7 @@ start:
   mov  bx, [BUFFER]
   mov  ax, [es:bx+12]
   mov  bx, ax
-  add  bx, 96
+  add  bx, 104
   mov  [LASTBLOCK], bx
   jmp  .read_next       ; find where the bootable image starts
 .inc_loop:
