@@ -13,6 +13,8 @@ System requirements:
 * 1.44Mb disk
 * VGA graphics card
 
+A ne2000 compatible nic is required if the network module should be enabled.
+
 ##Building
 The building process is expected to be executed in a Linux system. In Windows 10 it can be built using Windows Subsystem for Linux.
 
@@ -34,6 +36,8 @@ The building process is expected to be executed in a Linux system. In Windows 10
 
 ##Testing
 After building, run `make qemu` (linux) or `qemu.bat` (windows) from the root directory to test the operating system in qemu. Other virtual machines have been successfully tested. To test the system using VirtualBox, create a new `Other/DOS` machine and start it with `images/os_fd.img` as floppy image.
+
+The network system has been only tested in qemu under Windows, using the Tap-windows driver provided in https://openvpn.net/index.php/download/community-downloads.html. This virtual device should be renamed to `tap` and bridged to the actual nic, so the default `qemu.bat` script will work as expected.
 
 If debug mode is activated in the operating system configuration, it will output debug information through the first serial port in real time. This can be useful for system and user application developers. This serial port is configured to work at 2400 bauds, 8 data bits, odd parity and 1 stop bit.
 

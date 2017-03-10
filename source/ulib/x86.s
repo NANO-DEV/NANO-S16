@@ -15,7 +15,7 @@ ___mkargv:
 extern _main
 
 
-INT_CODE equ 0x70
+INT_CODE equ 0x80
 
 ;
 ; uint syscall(uint s, void* p)

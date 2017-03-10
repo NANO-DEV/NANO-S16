@@ -41,7 +41,7 @@ struct DISKINFO disk_info[MAX_DISK];  /* Disk info */
  * Extern program call
  */
 typedef uint extern_main(uint argc, uchar* argv[]);
-#define EXTERN_PROGRAM_MEMLOC 0xC000
+#define EXTERN_PROGRAM_MEMLOC 0xE000
 
 /*
  * Heap related
@@ -499,6 +499,16 @@ uint kernel_service(uint service, void* param)
       *timer_ms = system_timer_ms;
       return 0;
     }
+
+    case SYSCALL_NET_RECV: {
+      struct TSYSCALL_NETOP* no = param;
+      return net_recv(no->addr, no->buff, no->size);
+    }
+
+    case SYSCALL_NET_SEND: {
+      struct TSYSCALL_NETOP* no = param;
+      return net_send(no->addr, no->buff, no->size);
+    }
   }
 
   return 0;
@@ -933,7 +943,6 @@ void kernel()
     } else if(strcmp(argv[0], "info") == 0) {
       /* Info command: show system info */
       if(argc == 1) {
-        net_test();
         putstr("\n\r");
         putstr("NANO S16 [Version %u.%u build %u]\n\r",
           OS_VERSION_HI, OS_VERSION_LO, OS_BUILD_NUM);
@@ -953,6 +962,7 @@ void kernel()
         putstr("System disk: %s\n\r", disk_to_string(system_disk));
         putstr("Serial port status: %s\n\r", serial_status & 0x80 ? "Error" : "Enabled");
         putstr("A20 Line status: %s\n\r", a20_enabled ? "Enabled" : "Disabled");
+        putstr("Network status: %s\n\r", network_enabled ? "Enabled" : "Disabled");
         putstr("Timer frequency: %UHz\n\r", system_timer_freq);
         putstr("System time alive: %Ums\n\r", system_timer_ms);
         putstr("\n\r");
@@ -1122,29 +1132,6 @@ void kernel()
           putstr("Reboot not supported\n\r");
       } else {
         putstr("usage: shutdown [reboot]\n\r");
-      }
-
-    } else if(strcmp(argv[0], "net") == 0) {
-      /* Net command: Send or receive through network */
-      if(argc == 2 && strcmp(argv[1], "recv") == 0) {
-        uchar buff[64];
-        uchar src_ip[4];
-        uint  recv = net_recv(src_ip, buff, sizeof(buff));
-        buff[recv] = 0;
-        if(recv==0) {
-          putstr("Buffer is empty\n\r");
-        } else {
-          putstr("Received %s from %d.%d.%d.%d\n\r", buff,
-            src_ip[0], src_ip[1], src_ip[2], src_ip[3]);
-        }
-      } else if(argc == 4 && strcmp(argv[1], "send") == 0) {
-        uchar dst_ip[4];
-        str_to_ip(dst_ip, argv[2]);
-        net_send(dst_ip, argv[3], strlen(argv[3]));
-        putstr("Sent %s to %d.%d.%d.%d\n\r", argv[3],
-          dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3]);
-      } else {
-        putstr("usage: net <send <dst_ip> <word> | recv>\n\r");
       }
 
     } else if(strcmp(argv[0], "config") == 0) {

@@ -1,1 +1,1 @@
-"c:\Program Files\qemu\qemu-system-i386" -drive file=images\os-fd.img,if=floppy,media=disk,format=raw -drive file=images\os-hd.img,media=disk,format=raw -boot menu=on -serial mon:stdio -m 2 -vga std -net nic,model=ne2k_isa -net dump,file=vm0.pcap -net tap,ifname=tap -monitor vc
+"c:\Program Files\qemu\qemu-system-i386" -drive file=images\os-fd.img,if=floppy,media=disk,format=raw -drive file=images\os-hd.img,media=disk,format=raw -boot menu=on -serial mon:stdio -m 2 -vga std -net nic,model=ne2k_isa -net tap,ifname=tap -monitor vc

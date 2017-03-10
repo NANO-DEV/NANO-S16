@@ -1,7 +1,7 @@
 ; Sample nas program
 ; Clear the screen and show "Hello"
 
-ORG 0xC000         ; Origin address
+ORG 0xE000         ; Origin address
 
 main:
   push bx          ; save reg state

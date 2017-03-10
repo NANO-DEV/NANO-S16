@@ -12,9 +12,9 @@ typedef unsigned long int  ul_t;
 typedef unsigned long int  lp_t;
 
 /* Size specific data types */
-typedef char               int8_t;
-typedef int                int16_t;
-typedef long int           int32_t;
+typedef signed char        int8_t;
+typedef signed int         int16_t;
+typedef signed long int    int32_t;
 
 typedef unsigned char      uint8_t;
 typedef unsigned int       uint16_t;

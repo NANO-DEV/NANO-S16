@@ -5,149 +5,168 @@
 
 /* Network controller
  * Assumes NE2000 compatible nic
+ * Example: Realtek RTL8019AS
  * http://www.ethernut.de/pdf/8019asds.pdf */
 
+/*
+ * The Ne2000 network card uses two ring buffers for packet handling.
+ * These are circular buffers made of 256-byte pages that the chip's DMA logic
+ * will use to store received packets or to get received packets.
+ * Note that a packet will always start on a page boundary,
+ * thus there may be unused bytes at the end of a page.
+ *
+ * Two registers NE2K_PSTART and NE2K_PSTOP define a set of 256-byte pages in the buffer
+ * memory that will be used for the ring buffer. As soon as the DMA attempts to
+ * read/write to NE2K_PSTOP, it will be sent back to NE2K_PSTART
+ *
+ * NE2K_PSTART                                                                       NE2K_PSTOP
+ * ####+-8------+-9------+-a------+-b------+-c------+-d------+-e------+-f------+####
+ * ####| Packet 3 (cont) |########|########|Packet1#|   Packet  2#####|Packet 3|####
+ * ####+--------+--------+--------+--------+--------+--------+--------+--------+####
+ * (An 8-page ring buffer with 3 packets and 2 free slots)
+ * While receiving, the NIC has 2 additional registers that point to the first
+ * packet that's still to be read and to the start of the currently written
+ * packet (named boundary pointer and current page respectively).
+ *
+ * Programming registers of the NE2000 are collected in pages.
+ * Page 0 contains most of the control and status registers while
+ * page 1 contains physical (NE2K_PAR0..NE2K_PAR5) and multicast addresses (NE2K_MAR0..NE2K_MAR7)
+ * to be checked by the card
+ */
 
-/* Install network IRQ handler */
+/* Is network enabled */
+uint network_enabled = 1;
+
+/* Install nic IRQ handler */
 extern void install_net_IRQ_handler();
 
-/* Byte swap */
+/* Byte swap operation */
 #define bswap_16(value) \
 ((((value) & 0xff) << 8) | ((value) >> 8))
 
-/* Test data */
-uchar test_data[42] =
-{'0', '1', '2', '3', '4', '5', '6', '7',
- '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
- '0', '1', '2', '3', '4', '5', '6', '7',
- '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
- '0', '1', '2', '3', '4', '5', '6', '7',
- 'E', 'P' };
-
 /* Registers */
-#define CR		  0x00 /* Command register */
+#define NE2K_CR		    0x00 /* Command register */
 /* 7-6:PS1-PS0 5-3:RD2-0 2:TXP 1:STA 0:STP */
 
-/* page 0, read */
-#define CLDA0		0x01
-#define CLDA1		0x02
-#define BNRY		0x03 /* Boundary rw */
-#define TSR		  0x04 /* Transmit status */
-#define NCR		  0x05 /* Collision counter */
-#define FIFO		0x06
-#define ISR		  0x07 /* Interrupt status rw */
-#define CRDA0		0x08
-#define CRDA1		0x09
-#define RSR		  0x0C
-#define CNTR0		0x0D /* Error counters */
-#define CNTR1		0x0E
-#define CNTR2		0x0F
+/* Page 0 registers, read */
+#define NE2K_CLDA0    0x01 /* Current Local DMA Address */
+#define NE2K_CLDA1    0x02
+#define NE2K_BNRY     0x03 /* Boundary */
+#define NE2K_TSR      0x04 /* Transmit status */
+#define NE2K_NCR      0x05 /* Collision counter */
+#define NE2K_FIFO     0x06 /* Allows to examine the contents of the FIFO after loopback */
+#define NE2K_ISR      0x07 /* Interrupt status */
+#define NE2K_CRDA0    0x08 /* Current Remote DMA Address */
+#define NE2K_CRDA1    0x09
+#define NE2K_RSR      0x0C /* Receive status */
+#define NE2K_CNTR0    0x0D /* Error counters */
+#define NE2K_CNTR1    0x0E
+#define NE2K_CNTR2    0x0F
 
-/* page 0 write */
-#define PSTART	0x01 /* Page start read page 2 */
-#define PSTOP		0x02 /* Page stop read page 2 */
-#define TPSR		0x04 /* Transmit page start read page 2 */
-#define TBCR0		0x05
-#define TBCR1		0x06
-#define RSAR0		0x08 /* Remote start address */
-#define RSAR1		0x09
-#define RBCR0		0x0A /* Remote byte count */
-#define RBCR1		0x0B
-#define RCR		  0x0C /* Receive config read page 2 */
-#define TCR		  0x0D /* Transmit config read page 2 */
-#define DCR		  0x0E /* Data config read page 2 */
-#define IMR		  0x0F /* Interrupt mask read page 2 */
+/* Page 0 registers, write */
+#define NE2K_PSTART   0x01 /* Page start (read page 2) */
+#define NE2K_PSTOP    0x02 /* Page stop (read page 2) */
+#define NE2K_TPSR     0x04 /* Transmit page start (read page 2) */
+#define NE2K_TBCR0    0x05 /* Transmit byte count */
+#define NE2K_TBCR1    0x06
+#define NE2K_RSAR0    0x08 /* Remote start address */
+#define NE2K_RSAR1    0x09
+#define NE2K_RBCR0    0x0A /* Remote byte count */
+#define NE2K_RBCR1    0x0B
+#define NE2K_RCR      0x0C /* Receive config (read page 2) */
+#define NE2K_TCR      0x0D /* Transmit config (read page 2) */
+#define NE2K_DCR      0x0E /* Data config (read page 2) */
+#define NE2K_IMR      0x0F /* Interrupt mask (read page 2) */
 
-/* page 1 read/write */
-#define PAR0		0x01 /* Physical address */
-#define PAR1		0x02
-#define PAR2		0x03
-#define PAR3		0x04
-#define PAR4		0x05
-#define PAR5		0x06
-#define CURR		0x07 /* Current page */
-#define MAR0		0x08 /* Multicast address */
-#define MAR1		0x09
-#define MAR2		0x0A
-#define MAR3		0x0B
-#define MAR4		0x0C
-#define MAR5		0x0D
-#define MAR6		0x0E
-#define MAR7		0x0F
+/* Page 1 registers, read/write */
+#define NE2K_PAR0    0x01 /* Physical address */
+#define NE2K_PAR1    0x02
+#define NE2K_PAR2    0x03
+#define NE2K_PAR3    0x04
+#define NE2K_PAR4    0x05
+#define NE2K_PAR5    0x06
+#define NE2K_CURR    0x07 /* Current page */
+#define NE2K_MAR0    0x08 /* Multicast address */
+#define NE2K_MAR1    0x09
+#define NE2K_MAR2    0x0A
+#define NE2K_MAR3    0x0B
+#define NE2K_MAR4    0x0C
+#define NE2K_MAR5    0x0D
+#define NE2K_MAR6    0x0E
+#define NE2K_MAR7    0x0F
 
-#define DATA		0x10
-#define RESET		0x1F
+#define NE2K_DATA    0x10 /* Data i/o */
+#define NE2K_RESET   0x1F /* Reset register */
 
-#define NE2K_STAT_RX    0x0001 /* packet received */
-#define NE2K_STAT_TX    0x0002 /* packet sent */
+/* NE2K_ISR/NE2K_IMR flags */
+#define NE2K_STAT_RX 0x0001 /* Packet received */
+#define NE2K_STAT_TX 0x0002 /* Packet sent */
 
+/* Store here current reception page */
 static uint rx_next = 0x47;
 
+/* Hardware info */
+#define MAC_LEN 6 /* Bytes size of a MAC address */
 static uint base = 0x300; /* Base device port */
-static uchar irq = 9; /* IRQ */
-static uchar local_mac[6]; /* Get from network card */
-uchar local_ip[4] = {192,168,1,2};
-uchar local_gate[4] = {192,168,1,1};
-static uchar local_net[4] = {255,255,255,0};
+static uint8_t local_mac[MAC_LEN]; /* Get from network card */
+
+/* IP protocol network  params */
+uint8_t local_ip[IP_LEN] = {192,168,1,2}; /* Default value, global */
+uint8_t local_gate[IP_LEN] = {192,168,1,1}; /* Default value, global */
+uint8_t local_net[IP_LEN] = {255,255,255,0}; /* Default value, global */
 
 /* Ethernet related */
-#define ETH_ADDR_LEN	6
-
 struct ethhdr {
-	uint8_t  dst[ETH_ADDR_LEN];
-	uint8_t  src[ETH_ADDR_LEN];
+	uint8_t  dst[MAC_LEN];
+	uint8_t  src[MAC_LEN];
 	uint16_t type;
 	uint8_t  data[0];	/* size 46-1500 */
 };
 
 /* Values of ethhdr->eh_type */
-#define ETH_TYPE_ARP	0x0806
-#define ETH_TYPE_IP	  0x0800
+#define ETH_TYPE_ARP  0x0806
+#define ETH_TYPE_IP   0x0800
 
-#define ETH_HDR_LEN	  14
+#define ETH_HDR_LEN   14
 
-#define ETH_MTU		    1500
-#define ETH_VLAN_LEN	4
-#define ETH_CRC_LEN	  4
+#define ETH_MTU       1500
+#define ETH_VLAN_LEN  4
+#define ETH_CRC_LEN   4
 
 #define ETH_PKT_MAX_LEN	(ETH_HDR_LEN+ETH_VLAN_LEN+ETH_MTU)
 
 /* ARP related */
-#define	ARP_HADDR_LEN	ETH_ADDR_LEN	/* Size of Ethernet MAC address	*/
-#define	ARP_PADDR_LEN	4		/* Size of IP address	*/
-
 struct arphdr {
 	uint16_t hrd; 	/* format of hardware address	*/
 	uint16_t pro; 	/* format of protocol address	*/
 	uint8_t  hln; 	/* length of hardware address	*/
 	uint8_t  pln; 	/* length of protocol address	*/
 	uint16_t op;  	/* arp/rarp operation	*/
-	uint8_t  sha[ARP_HADDR_LEN];
-	uint8_t  spa[ARP_PADDR_LEN];
-	uint8_t  dha[ARP_HADDR_LEN];
-	uint8_t  dpa[ARP_PADDR_LEN];
+	uint8_t  sha[MAC_LEN];
+	uint8_t  spa[IP_LEN];
+	uint8_t  dha[MAC_LEN];
+	uint8_t  dpa[IP_LEN];
 };
 
 /* Values of arphdr->ah_hrd */
-#define ARP_HTYPE_ETHER	1	/* Ethernet hardware type	*/
+#define ARP_HTYPE_ETHER 1	/* Ethernet hardware type	*/
 
 /* Values of arphdr->ah_pro */
-#define ARP_PTYPE_IP		0x0800	/* IP protocol type */
-#define ARP_PTYPE_ARP		0x0806	/* ARP protocol type */
+#define ARP_PTYPE_IP    0x0800 /* IP protocol type */
+#define ARP_PTYPE_ARP   0x0806 /* ARP protocol type */
 
 /* Values of arphdr->ah_op */
-#define ARP_OP_REQUEST	1	/* Request op code */
-#define ARP_OP_REPLY		2	/* Reply op code */
+#define ARP_OP_REQUEST  1	/* Request op code */
+#define ARP_OP_REPLY    2	/* Reply op code */
 
 
 /* IP Protocol */
-#define IP_PROTOCOL_ICMP  1
-#define IP_PROTOCOL_TCP   6
-#define IP_PROTOCOL_UDP   17
-
+#define IP_PROTOCOL_ICMP 1
+#define IP_PROTOCOL_TCP  6
+#define IP_PROTOCOL_UDP  17
 
 /* IPv4 Header */
-struct IPv4hdr {
+struct IPhdr {
   uint8_t  verIhl;
   uint8_t  tos;
   uint16_t len;
@@ -156,8 +175,8 @@ struct IPv4hdr {
   uint8_t  ttl;
   uint8_t  protocol;
   uint16_t checksum;
-  uint8_t  src[4];
-  uint8_t  dst[4];
+  uint8_t  src[IP_LEN];
+  uint8_t  dst[IP_LEN];
 };
 
 /* UDP header */
@@ -168,78 +187,73 @@ struct UDPhdr {
   uint16_t checksum;
 };
 
-/* ARP table to hold hw-p entries */
+/* ARP table to hold IP-MAC entries */
 #define ARP_TABLE_LEN 8
 struct ARP_TABLE {
-  uchar p[ARP_PADDR_LEN];
-  uchar hw[ARP_HADDR_LEN];
+  uint8_t ip[IP_LEN];
+  uint8_t mac[MAC_LEN];
 } arp_table[ARP_TABLE_LEN];
 
-/* Given a p address, provide hw address */
-uchar* find_hw_in_table(uchar* p)
+/* Given an IP address, provide effective IP address to send packet */
+uint8_t* get_effective_ip(uint8_t* ip)
+{
+  uint i;
+
+  /* If IP is outside the local network return gate address */
+  for(i=0; i<IP_LEN; i++) {
+    if((ip[i]&local_net[i]) != (local_ip[i]&local_net[i])) {
+      break;
+    }
+  }
+  if(i!=IP_LEN) {
+    return local_gate;
+  }
+	/* Otherwise, return the same IP */
+  return ip;
+}
+
+/* Given an IP address, provide MAC address
+ * if found in the translation table */
+uint8_t* find_mac_in_table(uint8_t* ip)
 {
   uint i = 0;
 
-  /* Local ip -> local mac */
-  if(memcmp(p, local_ip) == 0) {
+  /* Local IP -> local MAC */
+  if(memcmp(ip, local_ip, sizeof(local_ip)) == 0) {
     return local_mac;
   }
 
-  /* Search in the real table */
+  /* Otherwise search in the table */
   for(i=0; i<ARP_TABLE_LEN; i++) {
-    uint j = 0;
-    for(j=0; j<ARP_PADDR_LEN; j++) {
-      if(arp_table[i].p[j] != p[j]) {
-        break;
-      }
-    }
-    if(j==ARP_PADDR_LEN) {
-      return arp_table[i].hw;
+    if(memcmp(arp_table[i].ip, ip,
+      sizeof(arp_table[i].ip)) == 0) {
+      return arp_table[i].mac;
     }
   }
   return 0;
 }
 
-/* Buffers to sebd/receive packets */
-uchar tmp_buff[512];
-uchar rcv_buff[512];
-uchar rcv_addr[4];
-uint  rcv_port = 0;
-uint  rcv_size = 0;
-uchar snd_buff[512];
+/* Buffers to send/receive packets */
+uint8_t tmp_buff[256];
+uint8_t rcv_buff[256];
+uint8_t rcv_addr[IP_LEN];
+uint    rcv_port = 0;
+uint    rcv_size = 0;
+uint8_t snd_buff[256];
 
 /* For now, lets save only what is received in this port */
 #define NSUDP_PROTO_PORT 8086
 
 
- /* Convert string to IP */
-void str_to_ip(uchar* ip, uchar* str)
-{
-  uint i = 0;
-  uchar tok_str[32];
-  uchar* tok = tok_str;
-  uchar* nexttok = tok;
-  strcpy_s(tok_str, str, sizeof(tok_str));
-
-  /* Tokenize */
-  while(*tok && *nexttok && i<4) {
-    tok = strtok(tok, &nexttok, '.');
-    if(*tok) {
-      ip[i++] = stou(tok);
-    }
-    tok = nexttok;
-  }
-}
-
 /* Keep checksum 16-bits */
 uint16_t net_checksum_final(uint sum)
 {
   uint16_t temp;
-  sum = (sum&0xffff) + (sum>>16);
+  sum = (sum&0xFFFF) + (sum>>16);
   sum += (sum>>16);
 
   temp = ~sum;
-  return ((temp&0x00ff)<<8) | ((temp&0xff00)>>8);
+  return ((temp&0x00FF)<<8) | ((temp&0xFF00)>>8);
 }
 
 /* Checksum accumulation function */
@@ -341,9 +355,9 @@ uint32_t xor32(uint32_t a, uint32_t b)
 {
   uint i;
   uint32_t r;
-  uchar* pa = &a;
-  uchar* pb = &b;
-  uchar* pr = &r;
+  uint8_t* pa = &a;
+  uint8_t* pb = &b;
+  uint8_t* pr = &r;
   for(i=0; i<4; i++) {
     *pr = *pa ^ *pb;
     pr++;
@@ -353,7 +367,7 @@ uint32_t xor32(uint32_t a, uint32_t b)
   return r;
 }
 
-/* calculate a checksum on a buffer */
+/* Calculate a checksum on a buffer */
 uint32_t crc32_byte(uint8_t* p, uint32_t bytelength)
 {
 	uint32_t crc = 0xFFFFFFFFL;
@@ -363,34 +377,47 @@ uint32_t crc32_byte(uint8_t* p, uint32_t bytelength)
 	return (~crc);
 }
 
+/* Select a registers page in the ne2k */
+void ne2k_page_select(uint page)
+{
+  uint pg = (page&0x01)<<6;
+  uint cm = 0x3F & inb(base + NE2K_CR);
+  outb((uchar)(pg|cm), base + NE2K_CR);
+}
+
 /*
- * Send network packet
+ * Send network packet (hardware, ne2k)
  */
-uint ne2k_send(uchar* data, uint len)
+uint ne2k_send(uint8_t* data, uint len)
 {
   uint i;
-	while(inb(base + CR) == 0x26) { /* Abort/Complete DMA + Transmit + Start */
+	while(inb(base + NE2K_CR) == 0x26) { /* Abort/Complete DMA + Transmit + Start */
   }
 
-	outb(0, base + RSAR0);
-	outb(0x40, base + RSAR1);
-	outb(len & 0xFF, base + RBCR0);
-	outb((len >> 8) & 0xFF, base + RBCR1);
-	outb(0x12, base + CR); 	/* Write and start */
+  /* Prepare buffer and size */
+  ne2k_page_select(0);
+	outb(0, base + NE2K_RSAR0);
+	outb(0x40, base + NE2K_RSAR1);
+	outb(len & 0xFF, base + NE2K_RBCR0);
+	outb((len >> 8) & 0xFF, base + NE2K_RBCR1);
 
+	outb(0x12, base + NE2K_CR); 	/* Start write */
+
+  /* Load buffer */
   for(i=0; i<len; i++) {
-	  outb(data[i], base + DATA);
+	  outb(data[i], base + NE2K_DATA);
    }
 
-	while((inb(base + ISR) & 0x40) == 0) { /* Wait for DMA completed */
+  /* Wait until operation completed */
+	while((inb(base + NE2K_ISR) & 0x40) == 0) {
   }
 
-	outb(0x40, base + ISR); /* Clear bit */
+	outb(0x40, base + NE2K_ISR); /* Clear completed bit */
 
-	outb(0x40, base + TPSR );
-	outb(len & 0xff, base + TBCR0);
-	outb((len >> 8) & 0xff, base + TBCR1);
-	outb(0x26, base + CR); /* Abort/Complete DMA + Transmit + Start */
+	outb(0x40, base + NE2K_TPSR);
+	outb((len & 0xFF), base + NE2K_TBCR0);
+	outb(((len >> 8) & 0xFF), base + NE2K_TBCR1);
+	outb(0x26, base + NE2K_CR); /* Abort/Complete DMA + Transmit + Start */
 
 	return 0;
 }
@@ -398,73 +425,73 @@ uint ne2k_send(uchar* data, uint len)
 /*
  * Send network packet (ethernet)
  */
-uint eth_send(uchar* dst, uint type, uchar* data, uint len)
+uint eth_send(uint8_t* dst_mac, uint type, uint8_t* data, uint len)
 {
-  uint  head_len = sizeof(struct ethhdr);
+  uint head_len = sizeof(struct ethhdr);
   struct ethhdr* eh = (struct ethhdr*)data;
   uint32_t eth_crc = 0;
 
   memcpy(eh->data, data, len);
-  memcpy(eh->dst, dst, sizeof(eh->dst));
+  memcpy(eh->dst, dst_mac, sizeof(eh->dst));
 	memcpy(eh->src, local_mac, sizeof(eh->src));
 	eh->type = bswap_16(type);
 
   eth_crc = crc32_byte(data, head_len+len);
   memcpy(&eh->data[len], &eth_crc, sizeof(eth_crc));
-  return ne2k_send(data, len + head_len-1 + ETH_CRC_LEN);
+  return ne2k_send(data, len + head_len + ETH_CRC_LEN);
 }
 
 /*
  * Request mac address given an IP
  */
-uint arp_request(uchar* ip)
+uint arp_request(uint8_t* ip)
 {
   uint head_len = sizeof(struct arphdr);
-  uchar broadcast[ARP_HADDR_LEN];
+  uint8_t broadcast_mac[MAC_LEN];
   struct arphdr* ah = snd_buff;
-  memset(broadcast, 0xFF, sizeof(broadcast));
+  memset(broadcast_mac, 0xFF, sizeof(broadcast_mac));
 
   ah->hrd = bswap_16(ARP_HTYPE_ETHER);
   ah->pro = bswap_16(ARP_PTYPE_IP);
-  ah->hln = ARP_HADDR_LEN;
-  ah->pln = ARP_PADDR_LEN;
+  ah->hln = MAC_LEN;
+  ah->pln = IP_LEN;
   ah->op = bswap_16(ARP_OP_REQUEST);
   memcpy(ah->sha, local_mac, sizeof(ah->sha));
   memcpy(ah->spa, local_ip, sizeof(ah->spa));
-  memcpy(ah->dha, broadcast, sizeof(ah->dha));
+  memcpy(ah->dha, broadcast_mac, sizeof(ah->dha));
   memcpy(ah->dpa, ip, sizeof(ah->dpa));
-  return eth_send(broadcast, ETH_TYPE_ARP, snd_buff, head_len);
+  return eth_send(broadcast_mac, ETH_TYPE_ARP, snd_buff, head_len);
 }
 
 /*
- * Reply with local mac address
+ * Reply an ARP request with local mac address
  */
-uint arp_reply(uchar* hwdst, uchar* pst)
+uint arp_reply(uint8_t* mac, uint8_t* ip)
 {
   uint head_len = sizeof(struct arphdr);
   struct arphdr* ah = snd_buff;
 
   ah->hrd = bswap_16(ARP_HTYPE_ETHER);
   ah->pro = bswap_16(ARP_PTYPE_IP);
-  ah->hln = ARP_HADDR_LEN;
-  ah->pln = ARP_PADDR_LEN;
+  ah->hln = MAC_LEN;
+  ah->pln = IP_LEN;
   ah->op = bswap_16(ARP_OP_REPLY);
   memcpy(ah->sha, local_mac, sizeof(ah->sha));
   memcpy(ah->spa, local_ip, sizeof(ah->spa));
-  memcpy(ah->dha, hwdst, sizeof(ah->dha));
-  memcpy(ah->dpa, pst, sizeof(ah->dpa));
-  return eth_send(hwdst, ETH_TYPE_ARP, snd_buff, head_len);
+  memcpy(ah->dha, mac, sizeof(ah->dha));
+  memcpy(ah->dpa, ip, sizeof(ah->dpa));
+  return eth_send(mac, ETH_TYPE_ARP, snd_buff, head_len);
 }
 
 /*
  * Send IP packet
  */
-uint ip_send(uchar* dst, uchar protocol, uchar* data, uint len)
+uint ip_send(uint8_t* dst_ip, uint8_t protocol, uint8_t* data, uint len)
 {
-  uint head_len = sizeof(struct IPv4hdr);
-  struct IPv4hdr* ih = data;
+  uint head_len = sizeof(struct IPhdr);
+  struct IPhdr* ih = data;
   uint checksum = 0;
-  uchar* hw_dst = 0;
+  uint8_t* dst_mac = 0;
   uint i = 0;
 
   memcpy(&(data[head_len]), data, len);
@@ -477,61 +504,55 @@ uint ip_send(uchar* dst, uchar protocol, uchar* data, uint len)
   ih->protocol = protocol;
   ih->checksum = 0;
   memcpy(ih->src, local_ip, sizeof(ih->src));
-  memcpy(ih->dst, dst, sizeof(ih->dst));
+  memcpy(ih->dst, dst_ip, sizeof(ih->dst));
 
   checksum = net_checksum(data, len+head_len);
   ih->checksum = bswap_16(checksum);
 
   /* Try to find hw address in table */
-  i = 0;
-  for(i=0; i<4; i++) {
-    if(dst[i]&local_net[i] != local_ip[i]) {
-      break;
-    }
-  }
-
-  /* Send to local gate if is outside network */
-  if(i==4) {
-    hw_dst = find_hw_in_table(dst);
-  } else {
-    hw_dst = find_hw_in_table(local_gate);
-  }
+  dst_mac = find_mac_in_table(get_effective_ip(dst_ip));
 
   /* Unsuccessful */
-  if(hw_dst == 0) {
+  if(dst_mac == 0) {
     debugstr("net: IP: Can't find hw address for %d.%d.%d.%d. Aborted\n\r",
-      dst[0], dst[1], dst[2], dst[3]);
+      dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3]);
     return 1;
   }
 
-  return eth_send(hw_dst, ETH_TYPE_IP, data, head_len+len);
+  return eth_send(dst_mac, ETH_TYPE_IP, data, head_len+len);
 }
 
 /*
- * Ensure hw address is in table
+ * Ensure mac address is in table
  * Ask for it, if it isn't
  */
-uint provide_hw_address(uchar* dst)
+uint provide_mac_address(uint8_t* ip)
 {
-  /* Try to find hw address */
   uint i = 0;
-  uchar* hw_dst = find_hw_in_table(dst);
+  uint8_t* mac = 0;
 
-  while(hw_dst==0 && i<16) {
-    debugstr("net: Requesting hw address for %d.%d.%d.%d...\n\r",
-      dst[0], dst[1], dst[2], dst[3]);
+  /* Get effective address */
+  ip = get_effective_ip(ip);
+
+  /* Find in table */
+  mac = find_mac_in_table(ip);
+
+  /* If not found, request */
+  while(mac==0 && i<16) {
+    debugstr("net: Requesting mac for %d.%d.%d.%d...\n\r",
+      ip[0], ip[1], ip[2], ip[3]);
 
     /* Request it and wait */
-    arp_request(dst);
+    arp_request(ip);
     wait(2000);
 
     /* Try again */
-    hw_dst = find_hw_in_table(dst);
+    mac = find_mac_in_table(ip);
     i++;
   }
 
   /* Unsuccessful */
-  if(hw_dst == 0) {
+  if(mac == 0) {
     return 1;
   }
 
@@ -541,16 +562,17 @@ uint provide_hw_address(uchar* dst)
 /*
  * Send UDP packet
  */
-uint udp_send(uchar* dst, uint src_port, uint dst_port, uchar protocol, uchar* data, uint len)
+uint udp_send(uint8_t* dst_ip, uint src_port, uint dst_port,
+  uint8_t protocol, uint8_t* data, uint len)
 {
   uint head_len = sizeof(struct UDPhdr);
   struct UDPhdr* uh = snd_buff;
   uint checksum = 0;
 
   /* Provide hw addresss before process */
-  if(provide_hw_address(dst) != 0 || provide_hw_address(local_gate)) {
+  if(provide_mac_address(dst_ip) != 0 || provide_mac_address(local_gate) != 0) {
     debugstr("net: can't find hw address for %d.%d.%d.%d. Aborted\n\r",
-      dst[0], dst[1], dst[2], dst[3]);
+      dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3]);
     return 1;
   }
 
@@ -562,16 +584,16 @@ uint udp_send(uchar* dst, uint src_port, uint dst_port, uchar protocol, uchar* d
 
   checksum = net_checksum(uh, len+head_len);
   uh->checksum = bswap_16(checksum);
-  return ip_send(dst, IP_PROTOCOL_UDP, uh, head_len+len);
+  return ip_send(dst_ip, IP_PROTOCOL_UDP, uh, head_len+len);
 }
 
 /*
  * Process received IP packet
  */
-void ip_receive(uchar* buff, uint len)
+void ip_recv_process(uint8_t* buff, uint len)
 {
-  uint head_len = sizeof(struct IPv4hdr);
-  struct IPv4hdr* ih = buff;
+  uint head_len = sizeof(struct IPhdr);
+  struct IPhdr* ih = buff;
 
   /* Store only one packet */
   if(rcv_size > 0) {
@@ -582,19 +604,22 @@ void ip_receive(uchar* buff, uint len)
   /* Check UDP packet type */
   if(ih->protocol == IP_PROTOCOL_UDP) {
     uint i = 0;
-    struct UDPhdr* uh = &buff[head_len];
+    struct UDPhdr* uh;
+    buff += head_len; /* Advance buffer */
+    uh = buff;
     head_len = sizeof(struct UDPhdr);
 
     debugstr("net: UDP received: %u.%u.%u.%u:%u to port %u (%u bytes)\n\r",
       ih->src[0], ih->src[1], ih->src[2], ih->src[3],
-      uh->srcPort, uh->dstPort, uh->len - head_len);
+      bswap_16(uh->srcPort), bswap_16(uh->dstPort), bswap_16(uh->len) - head_len);
 
     /* Store it */
-    if(uh->dstPort == NSUDP_PROTO_PORT) {
-      rcv_port = uh->srcPort;
-      rcv_size = uh->len - head_len;
+    if(bswap_16(uh->dstPort) == NSUDP_PROTO_PORT) {
+      rcv_port = bswap_16(uh->srcPort);
+      rcv_size = min(bswap_16(uh->len)-head_len, sizeof(rcv_buff));
       memcpy(rcv_addr, ih->src, sizeof(rcv_addr));
       memcpy(rcv_buff, &buff[head_len], rcv_size);
+			debugstr("net: UDP packet was stored\n\r");
     }
   }
 }
@@ -602,27 +627,28 @@ void ip_receive(uchar* buff, uint len)
 /*
  * Process received ARP packet
  */
-void arp_receive(uchar* buff, uint len)
+void arp_recv_process(uint8_t* buff, uint len)
 {
   struct arphdr* ah = buff;
 
   if(ah->hrd == bswap_16(ARP_HTYPE_ETHER) &&
     ah->pro == bswap_16(ARP_PTYPE_IP)) {
     /* If it's a reply */
-    if(ah->op == bswap_16(ARP_OP_REPLY)) {
-      /* If exists, update entry */
-      uchar* hw = find_hw_in_table(ah->spa);
-      if(hw) {
-        memcpy(hw, ah->sha, sizeof(ah->sha));
+    if(ah->op == bswap_16(ARP_OP_REPLY) &&
+			memcmp(ah->dpa, local_ip, sizeof(ah->dpa)) == 0) {
+      /* If exists in table, update entry */
+      uint8_t* mac = find_mac_in_table(ah->spa);
+      if(mac) {
+        memcpy(mac, ah->sha, sizeof(ah->sha));
         debugstr("net: ARP: updated: %d.%d.%d.%d : %2x:%2x:%2x:%2x:%2x:%2x\n\r",
           ah->spa[0], ah->spa[1], ah->spa[2], ah->spa[3],
           ah->sha[0], ah->sha[1], ah->sha[2], ah->sha[3], ah->sha[4], ah->sha[5]);
       } else { /* If does not exist, create new entry */
         uint i = 0;
         for(i=0; i<ARP_TABLE_LEN; i++) {
-          if(arp_table[i].p[0] == 0) { /* Free entry */
-            memcpy(arp_table[i].p, ah->spa, sizeof(arp_table[i].p));
-            memcpy(arp_table[i].hw, ah->sha, sizeof(arp_table[i].hw));
+          if(arp_table[i].ip[0] == 0 || i==ARP_TABLE_LEN-1) { /* Free entry */
+            memcpy(arp_table[i].ip, ah->spa, sizeof(arp_table[i].ip));
+            memcpy(arp_table[i].mac, ah->sha, sizeof(arp_table[i].mac));
             debugstr("net: ARP: added: %d.%d.%d.%d : %2x:%2x:%2x:%2x:%2x:%2x\n\r",
               ah->spa[0], ah->spa[1], ah->spa[2], ah->spa[3],
               ah->sha[0], ah->sha[1], ah->sha[2], ah->sha[3], ah->sha[4], ah->sha[5]);
@@ -630,14 +656,15 @@ void arp_receive(uchar* buff, uint len)
           }
         }
       }
-    } /* Answer if it's a local hw address request */
-    else if(ah->op == bswap_16(ARP_OP_REQUEST) &&
-      memcmp(ah->dpa, local_ip, sizeof(ah->dpa)) == 0) {
-      arp_reply(ah->sha, ah->spa);
-      debugstr("net: sent arp reply\n\r");
+    /* Reply in case it's a local MAC address request */
+    } else if(ah->op == bswap_16(ARP_OP_REQUEST)) {
+      if(memcmp(ah->dpa, local_ip, sizeof(ah->dpa)) == 0) {
+        arp_reply(ah->sha, ah->spa);
+        debugstr("net: sent arp reply\n\r");
+      }
     }
   } else {
-    debugstr("net: received an unknown type arp packet\n\r");
+    /* debugstr("net: received an unknown type arp packet\n\r"); */
   }
 }
 
@@ -650,81 +677,126 @@ void ne2k_receive()
   struct ethhdr* eh = (struct ethhdr*)tmp_buff;
 
 	struct {
-		uchar rsr;
-		uchar next;
-		uint  len;
+		uint8_t rsr;
+		uint8_t next;
+		uint    len;
 	} info;
 
-	outb(0, base + RSAR0);
-	outb(rx_next, base + RSAR1);
-	outb(4, base + RBCR0);
-	outb(0, base + RBCR1);
-	outb(0x12, base + CR ); /* Read and start */
+	/* Maybe more than one packet is in buffer */
+	/* Retrieve all of them */
+  uint8_t bndry = 0;
+  uint8_t current = 0;
 
-  for(i=0; i<4; i++) {
-	  ((uchar*)&info)[i] = inb(base + DATA);
+  ne2k_page_select(1);
+  current = inb(base + NE2K_CURR);
+  ne2k_page_select(0);
+  bndry = inb(base + NE2K_BNRY);
+
+  while(bndry != current) {
+		/* Get reception info */
+    ne2k_page_select(0);
+  	outb(0, base + NE2K_RSAR0);
+  	outb(rx_next, base + NE2K_RSAR1);
+  	outb(4, base + NE2K_RBCR0);
+  	outb(0, base + NE2K_RBCR1);
+  	outb(0x12, base + NE2K_CR); /* Read and start */
+
+    for(i=0; i<4; i++) {
+  	  ((uchar*)&info)[i] = inb(base + NE2K_DATA);
+    }
+
+		/* Get the data */
+  	outb(4, base + NE2K_RSAR0);
+  	outb(rx_next, base + NE2K_RSAR1);
+
+  	outb((info.len & 0xFF), base + NE2K_RBCR0);
+  	outb(((info.len >> 8) & 0xFF), base + NE2K_RBCR1);
+
+		outb(0x12, base + NE2K_CR); /* Read and start */
+
+    for(i=0; i<info.len; i++) {
+  	  tmp_buff[min(i, sizeof(tmp_buff)-1)] = inb(base + NE2K_DATA);
+    }
+
+		/* Wait for operation completed */
+  	while((inb(base + NE2K_ISR) & 0x40) == 0) {
+    }
+		/* Clear completed bit */
+    outb(0x40, base + NE2K_ISR);
+
+		/* Update reception pages */
+    if(info.next) {
+      rx_next = info.next;
+      if(rx_next == 0x40) {
+        outb(0x80, base + NE2K_BNRY);
+      } else {
+        outb(rx_next==0x46?0x7F:rx_next-1, base + NE2K_BNRY);
+      }
+    }
+
+		/* Update current and bndry values */
+    ne2k_page_select(1);
+    current = inb(base + NE2K_CURR);
+    ne2k_page_select(0);
+    bndry = inb(base + NE2K_BNRY);
+
+ 	  /* Wait and clear */
+    while((inb(base + NE2K_ISR) & 0x40) == 0) {
+    }
+    outb(0x40, base + NE2K_ISR);
+
+		/* Process packet if broadcast or unicast to local_mac */
+		if(!memcmp(eh->dst, local_mac, sizeof(eh->dst)) ||
+			!memcmp(eh->dst, arp_table[0].mac, sizeof(eh->dst)))
+		{
+			/* Clamp length to reception buffer size */
+			info.len = min(sizeof(tmp_buff), info.len);
+
+	    /* Redirect packets to type handlers */
+	    switch(bswap_16(eh->type)) {
+	  	case ARP_PTYPE_IP:
+	  		ip_recv_process(eh->data, info.len-sizeof(struct ethhdr));
+	  		break;
+	  	case ARP_PTYPE_ARP:
+	      arp_recv_process(eh->data, info.len-sizeof(struct ethhdr));
+	  		break;
+	  	/*default:*/
+	  	  /* debugstr("net: received unknown type ethernet packet (%x)\n\r", bswap_16(eh->type)); */
+	    };
+		}
+
+		/* Break if no more packets */
+    if(info.next == current || !info.next) {
+      break;
+    }
   }
-
-	outb(4, base + RSAR0);
-	outb(rx_next, base + RSAR1);
-	outb(info.len & 0xff, base + RBCR0);
-	outb((info.len >> 8) & 0xff, base + RBCR1);
-  for(i=0; i<info.len; i++) {
-	  tmp_buff[min(i, sizeof(tmp_buff)-1)] = inb(base + DATA);
-  }
-
-	while((inb(base + ISR) & 0x40) == 0) { /* Wait for DMA completed */
-  }
-
-  outb(0x40, base + ISR); /* Clear bit */
-
-	rx_next = info.next;
-	if(rx_next == 0x40) {
-		outb(base + BNRY, 0x80);
-  } else {
-    outb(base + BNRY, rx_next - 1);
-  }
-
-/*	debugstr("eth dst: %2x:%2x:%2x:%2x:%2x:%2x\n\r", eh->dst[0], eh->dst[1],
-    eh->dst[2], eh->dst[3], eh->dst[4], eh->dst[5]);
-	debugstr("eth src: %2x:%2x:%2x:%2x:%2x:%2x\n\r", eh->src[0], eh->src[1],
-		eh->src[2], eh->src[3], eh->src[4], eh->src[5]);*/
-
-  /* Redirect packets to handlers */
-  switch(bswap_16(eh->type)) {
-	case ARP_PTYPE_IP:
-		ip_receive(eh->data, info.len-sizeof(struct ethhdr)-1);
-		break;
-	case ARP_PTYPE_ARP: {
-    arp_receive(eh->data, info.len-sizeof(struct ethhdr)-1);
-		break;
-  }
-	default:
-	 debugstr("net: received unknown type ethernet packet\n\r");
- };
 }
 
 /*
- * Interrupt handler
+ * ne2k interrupt handler
  */
 void net_handler()
 {
-	uchar isr = inb(base + ISR);
+	uint8_t isr;
 
-	if(isr & NE2K_STAT_RX) {
-    /* debugstr("net: packet received\n\r"); */
-		outb(NE2K_STAT_RX, base + ISR); /* Clear bit */
-		ne2k_receive();
-		return;
-	}
-	if(isr & NE2K_STAT_TX) {
-		/*debugstr("net: successfully sent packet\n\r");*/
-		outb(NE2K_STAT_TX, base + ISR); /* Clear bit */
+	/* Network must be enabled */
+	if(!network_enabled) {
 		return;
 	}
 
-	debugstr("net: unknown interrupt: %x\n\r", inb(base + ISR));
-	outb(0xFF, base + ISR); /* Clear all bits */
+  /* Iterate because more interrupts
+   * can be received while handling previous */
+  while((isr = inb(base + NE2K_ISR)) != 0) {
+  	if(isr & NE2K_STAT_RX) {
+  		ne2k_receive();
+  	}
+  	if(isr & NE2K_STAT_TX) {
+  	}
+
+		/* Clear interrupt bits */
+    outb(isr, base + NE2K_ISR);
+  }
+  return;
 }
 
 /*
@@ -733,7 +805,6 @@ void net_handler()
 void net_init()
 {
   uint i;
-  uchar* hw_gate;
 
   /* Reset translation table */
   memset(arp_table, 0, sizeof(arp_table));
@@ -743,96 +814,113 @@ void net_init()
   rcv_port = 0;
   rcv_size = 0;
 
+  /* Detect card */
+  if(network_enabled == 1) {
+    network_enabled = 0;
+  	outb(0x80, base + NE2K_IMR); /* Disable interrupts except reset */
+    outb(0xFF, base + NE2K_ISR); /* Clear interrupts */
+  	outb(inb(base + NE2K_RESET), base + NE2K_RESET); /* Reset */
+    wait(10); /* Wait */
+    if((inb(base + NE2K_ISR) == 0x80)) { /* Detect reset interrupt */
+			debugstr("net: ne2000 compatible nic found\n\r");
+      network_enabled = 1;
+  	}
+  }
+
+  /* Abort if network is not enabled */
+  if(network_enabled == 0) {
+		debugstr("net: compatible nic not found\n\r");
+    return;
+  }
+
   /* Install handler */
 	install_net_IRQ_handler();
 
   /* Reset, and wait */
-	outb(inb(base + RESET), base + RESET);
-	while((inb(base + ISR) & 0x80) == 0) {
+	outb(inb(base + NE2K_RESET), base + NE2K_RESET);
+	while((inb(base + NE2K_ISR) & 0x80) == 0) {
 	}
 
-	debugstr("net: ne2k reset\n\r");
+	debugstr("net: nic reset\n\r");
 
-	outb(0x21, base + CR);  /* Stop DMA and MAC */
-	outb(0x48, base + DCR); /* Access by words */
-	outb(0x06, base + TCR); /* Transmit: normal operation, aut-append and check CRC */
-	outb(0xD6, base + RCR); /* Receive: Accept and buffer */
-	outb(0x00, base + IMR); /* Disable interrupts */
-	outb(0xFF, base + ISR); /* ISR must be cleared */
+  ne2k_page_select(0);
+	outb(0x21, base + NE2K_CR);  /* Stop DMA and MAC */
+	outb(0x48, base + NE2K_DCR); /* Access by bytes */
+	outb(0xE0, base + NE2K_TCR); /* Transmit: normal operation, aut-append and check CRC */
+	outb(0xDE, base + NE2K_RCR); /* Receive: Accept and buffer */
+	outb(0x00, base + NE2K_IMR); /* Disable interrupts */
+	outb(0xFF, base + NE2K_ISR); /* NE2K_ISR must be cleared */
 
-	outb(0x40, base + TPSR ); /* Transmit page start */
-	outb(rx_next - 1, base + PSTART); /* Receive page start */
-	outb(0x80, base + PSTOP); /* Receive page stop */
-	outb(rx_next - 1, base + BNRY); /* Boundary */
-	outb(0x61, base + CR); /* Start, complete, config */
-	outb(rx_next, base + CURR); /* Change page */
-	outb(0x21, base + CR);
+	outb(0x40, base + NE2K_TPSR );       /* Transmit page start */
+	outb(rx_next-1, base + NE2K_PSTART); /* Receive page start */
+	outb(0x80, base + NE2K_PSTOP);       /* Receive page stop */
+	outb(rx_next-1, base + NE2K_BNRY);   /* Boundary */
+  ne2k_page_select(1);
+	outb(rx_next, base + NE2K_CURR);     /* Change current recv page */
 
-	outb(0x00, base + RSAR0); /* Remote start address */
-	outb(0x00, base + RSAR1);
-	outb(24, base + RBCR0); /* 24 bytes count */
-	outb(0x00, base + RBCR1);
-	outb(0x0A, base + CR);
+  ne2k_page_select(0);
+	outb(0x00, base + NE2K_RSAR0);       /* Remote start address */
+	outb(0x00, base + NE2K_RSAR1);
+	outb(24, base + NE2K_RBCR0);         /* 24 bytes count */
+	outb(0x00, base + NE2K_RBCR1);
+	outb(0x0A, base + NE2K_CR);
 
   /* Print MAC */
   debugstr("net: MAC: ");
 	for(i=0; i<6; i++) {
-		local_mac[i] = inb(base + DATA);
-    inb(base + DATA);
+		local_mac[i] = inb(base + NE2K_DATA);
+    inb(base + NE2K_DATA); /* Word sized, read again to advance */
 		debugstr("%2x ", local_mac[i]);
 	}
 	debugstr("\n\r");
 
   /* Listen to this MAC */
-	outb(0x61, base + CR);
-	outb(local_mac[0], base + PAR0);
-	outb(local_mac[1], base + PAR1);
-	outb(local_mac[2], base + PAR2);
-	outb(local_mac[3], base + PAR3);
-	outb(local_mac[4], base + PAR4);
-	outb(local_mac[5], base + PAR5);
+	ne2k_page_select(1);
+	outb(local_mac[0], base + NE2K_PAR0);
+	outb(local_mac[1], base + NE2K_PAR1);
+	outb(local_mac[2], base + NE2K_PAR2);
+	outb(local_mac[3], base + NE2K_PAR3);
+	outb(local_mac[4], base + NE2K_PAR4);
+	outb(local_mac[5], base + NE2K_PAR5);
 
   /* Clear multicast */
-  for(i=MAR0; i<=MAR7; i++) {
+  for(i=NE2K_MAR0; i<=NE2K_MAR7; i++) {
     outb(0, base + i);
   }
 
-  outb(0x22, base + CR); /* Start and no DMA */
-  outb(0x03, base + IMR); /* Set interrupt mask to read/write */
+  ne2k_page_select(0);
+  outb(0x22, base + NE2K_CR); /* Start and no DMA */
+  outb(0x03, base + NE2K_IMR); /* Set interrupt mask to read/write */
 
-  /* Add local computer to table */
-  memset(arp_table[0].hw, 0xFF, sizeof(arp_table[0].hw));
-  memset(arp_table[0].p, 0xFF, sizeof(arp_table[0].p));
-}
-
-/*
- * Test network
- */
-void net_test()
-{
-  /* Send test packet */
-  debugstr("net: sending test packet...\n\r");
-  net_send(local_gate, test_data, sizeof(test_data));
-  net_send(local_ip, test_data, sizeof(test_data));
+  /* Add broadcast address to translation table */
+  memset(arp_table[0].mac, 0xFF, sizeof(arp_table[0].mac));
+  memset(arp_table[0].ip, 0xFF, sizeof(arp_table[0].ip));
 }
 
 /*
  * Send buffer to dstIP
  */
-uint net_send(uchar* dstIP, uchar* buff, uint len)
+uint net_send(uint8_t* dst_ip, uint8_t* buff, uint len)
 {
-  return udp_send(dstIP, NSUDP_PROTO_PORT, NSUDP_PROTO_PORT,
-    IP_PROTOCOL_UDP, buff, len);
+  if(network_enabled) {
+    return udp_send(dst_ip, NSUDP_PROTO_PORT, NSUDP_PROTO_PORT,
+      IP_PROTOCOL_UDP, buff, len);
+  }
+  return 1;
 }
 
 /*
  * Receive data
  */
-uint net_recv(uchar* srcIP, uchar* buff, uint buff_size)
+uint net_recv(uint8_t* src_ip, uint8_t* buff, uint buff_size)
 {
-  if(rcv_size > 0) {
+	/* Handle pending nic requests */
+	net_handler();
+
+	/* Now check if there is something in the system buffer */
+  if(rcv_size > 0 && network_enabled) {
     uint ret = min(rcv_size, buff_size);
-    memcpy(srcIP, rcv_addr, sizeof(rcv_addr));
+    memcpy(src_ip, rcv_addr, sizeof(rcv_addr));
     memcpy(buff, rcv_buff, ret);
     rcv_size = 0;
     return ret;

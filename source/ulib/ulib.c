@@ -896,7 +896,53 @@ void wait(uint miliseconds)
   ul_t initial_timer, timer;
   syscall(SYSCALL_CLK_GET_MILISEC, &initial_timer);
   timer = initial_timer;
-  while(timer < initial_timer + miliseconds) {
+  while(timer < initial_timer + (ul_t)miliseconds) {
     syscall(SYSCALL_CLK_GET_MILISEC, &timer);
   }
+}
+
+/*
+ * Convert string to IP
+ */
+void str_to_ip(uint8_t* ip, uchar* str)
+{
+  uint i = 0;
+  uchar tok_str[24];
+  uchar* tok = tok_str;
+  uchar* nexttok = tok;
+  strcpy_s(tok_str, str, sizeof(tok_str));
+
+  /* Tokenize */
+  while(*tok && *nexttok && i<4) {
+    tok = strtok(tok, &nexttok, '.');
+    if(*tok) {
+      ip[i++] = stou(tok);
+   }
+   tok = nexttok;
+  }
+}
+
+/*
+ * Get and remove from buffer received data.
+ * src_ip and buff are filled by the function
+ */
+uint recv(uint8_t* src_ip, uchar* buff, uint buff_size)
+{
+  struct TSYSCALL_NETOP no;
+  no.addr = src_ip;
+  no.buff = buff;
+  no.size = buff_size;
+  return syscall(SYSCALL_NET_RECV, &no);
+}
+
+/*
+ * Send buffer to dst_ip
+ */
+uint send(uint8_t* dst_ip, uchar* buff, uint len)
+{
+  struct TSYSCALL_NETOP no;
+  no.addr = dst_ip;
+  no.buff = buff;
+  no.size = len;
+  return syscall(SYSCALL_NET_SEND, &no);
 }

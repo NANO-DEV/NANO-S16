@@ -42,6 +42,8 @@
 #define SYSCALL_FS_FORMAT               0x0059
 #define SYSCALL_CLK_GET_TIME            0x0060
 #define SYSCALL_CLK_GET_MILISEC         0x0061
+#define SYSCALL_NET_RECV                0x0070
+#define SYSCALL_NET_SEND                0x0071
 
 /*
  * Syscall param structs
@@ -103,6 +105,12 @@ struct TSYSCALL_POSITION {
 struct TSYSCALL_LMEM {
   lp_t               dst;
   ul_t               n;
+};
+
+struct TSYSCALL_NETOP {
+  uint8_t*           addr;
+  uchar*             buff;
+  uint               size;
 };
 
 #endif   /* _SYSCALL_H */

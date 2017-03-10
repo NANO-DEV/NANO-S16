@@ -8,7 +8,7 @@
 #define EOF 0xFFE0 /* End Of File */
 
 /* Code generation vars */
-uint cg_origin = 0xC000; /* Absolute pos in segment */
+uint cg_origin = 0xE000; /* Absolute pos in segment */
 
 /* Symbol types */
 enum S_TYPE {

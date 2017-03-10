@@ -1373,7 +1373,7 @@ _install_net_IRQ_handler:
 ; Install IRS
 ;
 ;
-INT_CODE_SYSCALL equ 0x70
+INT_CODE_SYSCALL equ 0x80
 global _install_ISR
 _install_ISR:
   cli                   ; hardware interrupts are now stopped
@@ -1396,6 +1396,7 @@ _install_ISR:
 SYS_ISR:
   pushad
 
+  cli
   mov  bx, sp
   mov  ax, [bx+32+6+4]  ; Get param 0
   push ax
@@ -1406,6 +1407,7 @@ SYS_ISR:
   pop  cx
   mov  [.result], ax
 
+  sti
   popad
   mov  ax, [.result]
 

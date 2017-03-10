@@ -639,5 +639,39 @@ ul_t get_timer();
 void wait(uint miliseconds);
 
 
+/* About IP format
+ *
+ * Unless something different is specified:
+ * uint8_t* ip   are arrays of 4 bytes with a parsed IP
+ * uchar* ip     are strings containing an unparsed IP
+ */
+
+/*
+ * Convert string to IP
+ */
+void str_to_ip(uint8_t* ip, uchar* str);
+
+/*
+ * Send len bytes of buffer to dst_ip
+ * Reception not guaranteed
+ * (uses UDP port 8086 for both source and dest)
+ * Returns 0 on success
+ */
+uint send(uint8_t* dst_ip, uchar* buff, uint len);
+
+/*
+ * Get and remove from the system buffer received data.
+ * src_ip and buff are filled by the function.
+ * If more than buff_size bytes were received,
+ * these will be lost.
+ * Returns number of bytes of buff that have been filled
+ * or 0 if nothing received.
+ * When the system buffer is full, all new received packets
+ * are discarded. So, recv must be called frequently.
+ * (the system reads continuously UDP port 8086 for reception)
+ */
+uint recv(uint8_t* src_ip, uchar* buff, uint buff_size);
+
+
 
 #endif   /* _ULIB_H */

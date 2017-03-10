@@ -5,13 +5,26 @@
 #ifndef _NET_H
 #define _NET_H
 
-extern uchar local_ip[4];
-extern uchar local_gate[4];
+
+/* Default value. If hardware is not compatible
+ * network will be automatically disabled */
+extern uint network_enabled;
+
+/* About IP format
+ *
+ * Unless something different is specified:
+ * uint8_t* ip   are arrays of IP_LEN bytes with a parsed IP
+ * uchar* ip     are strings containing an unparsed IP
+ */
+#define IP_LEN 4 /* Number of bytes of an IP */
+
+extern uint8_t local_ip[IP_LEN];
+extern uint8_t local_gate[IP_LEN];
 
 /*
  * Convert string to IP
  */
-void str_to_ip(uchar* ip, uchar* str);
+void str_to_ip(uint8_t* ip, uchar* str);
 
 /*
  * Initialize network
@@ -19,18 +32,14 @@ void str_to_ip(uchar* ip, uchar* str);
 void net_init();
 
 /*
- * Test network
+ * Send buffer to dst_ip
  */
-void net_test();
+uint net_send(uint8_t* dst_ip, uchar* buff, uint len);
 
 /*
- * Send buffer to dstIP
+ * Get and remove from buffer received data.
+ * src_ip and buff are filled by the function
  */
-uint net_send(uchar* dstIP, uchar* buff, uint len);
-
-/*
- * Receive data
- */
-uint net_recv(uchar* srcIP, uchar* buff, uint buff_size);
+uint net_recv(uint8_t* src_ip, uchar* buff, uint buff_size);
 
 #endif  /* _NET_H */
