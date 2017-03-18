@@ -36,7 +36,7 @@ static lp_t screen_buff = 0;
 static uchar getlc(lp_t ptr)
 {
   uchar c = 0;
-  lmemcpy(lp(&c), 0L, ptr, 0L, 1L);
+  lmemcpy(lp(&c), ptr, 1L);
   return c;
 }
 
@@ -46,7 +46,7 @@ static uchar getlc(lp_t ptr)
  */
 static void setlc(lp_t ptr, ul_t offset, uchar c)
 {
-  lmemcpy(ptr, offset, lp(&c), 0L, 1L);
+  lmemcpy(ptr + offset, lp(&c), 1L);
 }
 
 /*
@@ -57,14 +57,14 @@ static void editor_putchar(uint col, uint row, uchar c)
 {
   uchar buff_c = 0;
   ul_t screen_offset = col + (row-1)*SCREEN_WIDTH;
-  lmemcpy(lp(&buff_c), 0L, screen_buff, screen_offset, 1L);
+  lmemcpy(lp(&buff_c), screen_buff + screen_offset, 1L);
 
   if(col==mouse_x && row==mouse_y) { /* Draw mouse where it's located */
     c = '+';
   }
 
   if(c != buff_c) {
-    lmemcpy(screen_buff, screen_offset, lp(&c), 0L, 1L);
+    lmemcpy(screen_buff + screen_offset, lp(&c), 1L);
     putchar_attr(col, row, c, EDITOR_ATTRIBUTES);
   }
 }
@@ -245,7 +245,7 @@ uint main(uint argc, uchar* argv[])
         putstr("Can't read file %s (error=%x)\n\r", argv[1], result);
         return 1;
       }
-      lmemcpy(buff, offset, lp(cbuff), 0L, (ul_t)result);
+      lmemcpy(buff + offset, lp(cbuff), (ul_t)result);
       offset += result;
     }
     if(offset != entry.size) {
@@ -330,7 +330,7 @@ uint main(uint argc, uchar* argv[])
       result = 0;
       while(offset<buff_size && result<ERROR_ANY) {
         ul_t to_copy = min(sizeof(cbuff), buff_size-offset);
-        lmemcpy(lp(cbuff), (ul_t)0, buff, offset, to_copy);
+        lmemcpy(lp(cbuff), buff + offset, to_copy);
         result = write_file(cbuff, argv[1], (uint)offset, (uint)to_copy, FWF_CREATE | FWF_TRUNCATE);
         offset += to_copy;
       }
@@ -392,7 +392,7 @@ uint main(uint argc, uchar* argv[])
     /* Backspace key: delete char before cursor and move cursor there */
     } else if(k == KEY_BACKSPACE) {
       if(buff_cursor_offset > 0) {
-        lmemcpy(buff, buff_cursor_offset-1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
+        lmemcpy(buff+buff_cursor_offset-1L, buff+buff_cursor_offset, buff_size-buff_cursor_offset);
         buff_size--;
         putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
         buff_cursor_offset--;
@@ -401,7 +401,7 @@ uint main(uint argc, uchar* argv[])
     /* Del key: delete char at cursor */
     } else if(k == KEY_DEL) {
       if(buff_cursor_offset < buff_size-1) {
-        lmemcpy(buff, buff_cursor_offset, buff, buff_cursor_offset+1, buff_size-buff_cursor_offset-1);
+        lmemcpy(buff+buff_cursor_offset, buff+buff_cursor_offset+1, buff_size-buff_cursor_offset-1);
         buff_size--;
         putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);
       }
@@ -415,7 +415,7 @@ uint main(uint argc, uchar* argv[])
       if(k == KEY_TAB) {
         k = '\t';
       }
-      lmemcpy(buff, buff_cursor_offset+1, buff, buff_cursor_offset, buff_size-buff_cursor_offset);
+      lmemcpy(buff+buff_cursor_offset+1, buff+buff_cursor_offset, buff_size-buff_cursor_offset);
       setlc(buff, buff_cursor_offset++, k);
       buff_size++;
       putchar_attr(strlen(argv[1]), 0, '*', TITLE_ATTRIBUTES);

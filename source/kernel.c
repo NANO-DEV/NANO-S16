@@ -11,10 +11,10 @@
 #include "video.h"
 #include "net.h"
 
+uchar a20_enabled = 0; /* A20 line enabled */
+
 uchar serial_status = 0; /* Serial port status */
 uint serial_debug = 1; /* Debug info through serial port */
-
-uchar a20_enabled = 0; /* A20 line enabled */
 
 ul_t system_timer_freq = 0; /* Actual frequency of timer */
 ul_t system_timer_ms = 10; /* ms since timer initialized */
@@ -37,17 +37,21 @@ uint screen_height_px = 600;
 uchar  system_disk; /* System disk */
 struct DISKINFO disk_info[MAX_DISK];  /* Disk info */
 
+#define KERN_MEMSEG 0x0800L
+
 /*
  * Extern program call
  */
-typedef uint extern_main(uint argc, uchar* argv[]);
-#define EXTERN_PROGRAM_MEMLOC 0xE000
+#define UPROG_MEMSEG 0x1800L
+#define UPROG_MEMLOC 0x0000L
+#define UPROG_STRLOC 0xFF88L
+#define UPROG_ARGLOC 0xFF80L
 
 /*
  * Heap related
  */
 #define HEAP_MAX_BLOCK   0x0080U
-#define HEAP_MEM_SIZE    0x1000U
+#define HEAP_MEM_SIZE    0x0400U
 #define HEAP_BLOCK_SIZE  (HEAP_MEM_SIZE / HEAP_MAX_BLOCK)
 
 static uchar HEAPADDR[HEAP_MEM_SIZE]; /* Allocate heap memory */
@@ -128,10 +132,10 @@ static heap_free(void* ptr)
   return;
 }
 
-#define LMEM_START 0x00018000L
-#define LMEM_LIMIT 0x000A0000L
+#define LMEM_START 0x00028000L
+#define LMEM_LIMIT 0x0009FC00L
 #define LMEM_BLOCK_SIZE 0x10L
-#define LMEM_MAX_BLOCK 32
+#define LMEM_MAX_BLOCK 64
 struct LMEMBLOCK {
   lp_t start;
   ul_t size;
@@ -202,6 +206,8 @@ static lp_t lmem_alloc(ul_t size)
     lmem[i].start = start;
     lmem[i].size = size;
 
+    debugstr("LMem alloc: %X, %U bytes\n\r", lmem[i].start, lmem[i].size);
+
     return start;
   }
 
@@ -253,7 +259,7 @@ static uint BCD_to_int(uchar BCD)
  * -Unpack parameters
  * -Redirect to the right kernel function
  */
-uint kernel_service(uint service, void* param)
+uint kernel_service(uint cs, uint service, lp_t lparam)
 {
   switch(service) {
 
@@ -261,7 +267,7 @@ uint kernel_service(uint service, void* param)
       return graphics_mode==0?VM_TEXT:VM_GRAPHICS;
 
     case SYSCALL_IO_SET_VIDEO_MODE: {
-      uint mode = (uint)*param;
+      uint mode = lmem_getbyte(lparam);
       if(mode==VM_TEXT && graphics_mode==0) {
         io_set_text_mode();
       } else if(mode==VM_GRAPHICS && graphics_mode==1) {
@@ -271,13 +277,14 @@ uint kernel_service(uint service, void* param)
     }
 
     case SYSCALL_IO_GET_SCREEN_SIZE: {
-      struct TSYSCALL_POSITION* ps = param;
-      if(ps->x == SSM_CHARS) {
-        *(ps->px) = screen_width_c;
-        *(ps->py) = screen_height_c;
+      struct TSYSCALL_POSITION ps;
+      lmemcpy(lp(&ps), lparam, lsizeof(ps));
+      if(ps.x == SSM_CHARS) {
+        lmemcpy(ps.px, lp(&screen_width_c), lsizeof(screen_width_c));
+        lmemcpy(ps.py, lp(&screen_height_c), lsizeof(screen_height_c));
       } else {
-        *(ps->px) = screen_width_px;
-        *(ps->py) = screen_height_px;
+        lmemcpy(ps.px, lp(&screen_width_px), lsizeof(screen_width_px));
+        lmemcpy(ps.py, lp(&screen_height_px), lsizeof(screen_height_px));
       }
       return 0;
     }
@@ -287,41 +294,48 @@ uint kernel_service(uint service, void* param)
       return 0;
 
     case SYSCALL_IO_SET_PIXEL: {
-      struct TSYSCALL_POSATTR* ca = param;
-      video_set_pixel(ca->x, ca->y, ca->c);
+      struct TSYSCALL_POSATTR ca;
+      lmemcpy(lp(&ca), lparam, lsizeof(ca));
+      video_set_pixel(ca.x, ca.y, ca.c);
       return 0;
     }
 
     case SYSCALL_IO_DRAW_CHAR: {
-      struct TSYSCALL_POSATTR* ca = param;
-      draw_char(ca->x, ca->y, ca->c, ca->attr, NO_BACKGROUND);
+      struct TSYSCALL_POSATTR ca;
+      lmemcpy(lp(&ca), lparam, lsizeof(ca));
+      draw_char(ca.x, ca.y, ca.c, ca.attr, NO_BACKGROUND);
       return 0;
     }
 
     case SYSCALL_IO_OUT_CHAR:
-      io_out_char((uchar)*param);
+      io_out_char(lmem_getbyte(lparam));
       return 0;
 
     case SYSCALL_IO_OUT_CHAR_ATTR: {
-      struct TSYSCALL_POSATTR* ca = param;
-      io_out_char_attr(ca->x, ca->y, ca->c, ca->attr);
+      struct TSYSCALL_POSATTR ca;
+      lmemcpy(lp(&ca), lparam, lsizeof(ca));
+      io_out_char_attr(ca.x, ca.y, ca.c, ca.attr);
       return 0;
     }
 
     case SYSCALL_IO_SET_CURSOR_POS: {
-      struct TSYSCALL_POSITION* ps = param;
-      io_set_cursor_pos(ps->x, ps->y);
+      struct TSYSCALL_POSITION ps;
+      lmemcpy(lp(&ps), lparam, lsizeof(ps));
+      io_set_cursor_pos(ps.x, ps.y);
       return 0;
     }
 
     case SYSCALL_IO_GET_CURSOR_POS: {
-      struct TSYSCALL_POSITION* ps = param;
-      io_get_cursor_pos(ps->px, ps->py);
+      struct TSYSCALL_POSITION ps;
+      lmemcpy(lp(&ps), lparam, lsizeof(ps));
+      io_get_cursor_pos(&ps.x, &ps.y);
+      lmemcpy(ps.px, lp(&ps.x), lsizeof(ps.x));
+      lmemcpy(ps.py, lp(&ps.y), lsizeof(ps.y));
       return 0;
     }
 
     case SYSCALL_IO_SET_SHOW_CURSOR: {
-      uint mode = (uint)*param;
+      uint mode = lmem_getbyte(lparam);
       if(mode == HIDE_CURSOR) {
         io_hide_cursor();
       } else {
@@ -331,7 +345,7 @@ uint kernel_service(uint service, void* param)
     }
 
     case SYSCALL_IO_IN_KEY: {
-      uint mode = (uint)*param;
+      uint mode = lmem_getbyte(lparam);
       uint k;
       do {
         k = io_in_key();
@@ -373,19 +387,21 @@ uint kernel_service(uint service, void* param)
     }
 
     case SYSCALL_IO_GET_MOUSE_STATE: {
-      struct TSYSCALL_POSATTR* pa = param;
-      pa->x = mouse_x;
-      pa->y = mouse_y;
-      pa->c = (mouse_b & 0x3);
-      if(pa->attr==SSM_CHARS && graphics_mode) {
-        pa->x /= (screen_width_px/screen_width_c);
-        pa->y /= (screen_height_px/screen_height_c);
+      struct TSYSCALL_POSATTR pa;
+      lmemcpy(lp(&pa), lparam, lsizeof(pa));
+      pa.x = mouse_x;
+      pa.y = mouse_y;
+      pa.c = (mouse_b & 0x3);
+      if(pa.attr==SSM_CHARS && graphics_mode) {
+        pa.x /= (screen_width_px/screen_width_c);
+        pa.y /= (screen_height_px/screen_height_c);
       }
+      lmemcpy(lparam, lp(&pa), lsizeof(pa));
       return 0;
     }
 
     case SYSCALL_IO_OUT_CHAR_SERIAL:
-      io_out_char_serial((uchar)*param);
+      io_out_char_serial(lmem_getbyte(lparam));
       return 0;
 
     case SYSCALL_IO_IN_CHAR_SERIAL:
@@ -393,121 +409,218 @@ uint kernel_service(uint service, void* param)
 
     case SYSCALL_IO_OUT_CHAR_DEBUG:
       if(serial_debug) {
-        io_out_char_serial((uchar)*param);
+        io_out_char_serial(lmem_getbyte(lparam));
       }
       return 0;
 
-    case SYSCALL_MEM_ALLOCATE:
-      return heap_alloc((uint)*param);
+    case SYSCALL_MEM_ALLOCATE: {
+      uint size;
+
+      /* Can't allocate outside kernel segment */
+      if(cs != KERN_MEMSEG) {
+        return 0;
+      }
+      lmemcpy(lp(&size), lparam, lsizeof(size));
+      return heap_alloc(size);
+    }
 
     case SYSCALL_MEM_FREE:
-      heap_free(param);
+      heap_free(lparam);
       return 0;
 
     case SYSCALL_LMEM_ALLOCATE: {
-      struct TSYSCALL_LMEM* lm = param;
-      lm->dst = lmem_alloc(lm->n);
+      struct TSYSCALL_LMEM lm;
+      lmemcpy(lp(&lm), lparam, lsizeof(lm));
+      lm.dst = lmem_alloc(lm.n);
+      lmemcpy(lparam, lp(&lm), lsizeof(lm));
       return 0;
     }
     case SYSCALL_LMEM_FREE: {
-      struct TSYSCALL_LMEM* lm = param;
-      lmem_free(lm->dst);
+      struct TSYSCALL_LMEM lm;
+      lmemcpy(lp(&lm), lparam, lsizeof(lm));
+      lmem_free(lm.dst);
       return 0;
     }
     case SYSCALL_LMEM_GET: {
-      struct TSYSCALL_LMEM* lm = param;
-      return lmem_getbyte(lm->dst);
+      struct TSYSCALL_LMEM lm;
+      uint i = 0;
+      for(i=0; i<lsizeof(lm); i++) {
+        ((uint8_t*)(&lm))[i] = lmem_getbyte(lparam+i);
+      }
+      return lmem_getbyte(lm.dst);
     }
     case SYSCALL_LMEM_SET: {
-      struct TSYSCALL_LMEM* lm = param;
-      lmem_setbyte(lm->dst, (uchar)lm->n);
+      struct TSYSCALL_LMEM lm;
+      uint i = 0;
+      for(i=0; i<lsizeof(lm); i++) {
+        ((uint8_t*)(&lm))[i] = lmem_getbyte(lparam+i);
+      }
+      lmem_setbyte(lm.dst, (uint8_t)lm.n);
       return 0;
     }
 
     case SYSCALL_FS_GET_INFO: {
-      struct TSYSCALL_FSINFO* fi = param;
-      return fs_get_info(fi->disk_index, fi->info);
+      struct TSYSCALL_FSINFO fi;
+      struct FS_INFO info;
+      uint result;
+      lmemcpy(lp(&fi), lparam, lsizeof(fi));
+      result = fs_get_info(fi.disk_index, &info);
+      lmemcpy(fi.info, lp(&info), lsizeof(info));
+      return result;
     }
 
     case SYSCALL_FS_GET_ENTRY: {
-      struct TSYSCALL_FSENTRY* fi = param;
+      struct TSYSCALL_FSENTRY fi;
       struct SFS_ENTRY entry;
-      uint result = fs_get_entry(&entry, fi->path, fi->parent, fi->disk);
-      strcpy_s(fi->entry->name, entry.name, sizeof(fi->entry->name));
-      fi->entry->flags = entry.flags;
-      fi->entry->size = entry.size;
+      struct FS_ENTRY o_entry;
+      uchar path[MAX_PATH];
+      uint result;
+      lmemcpy(lp(&fi), lparam, lsizeof(fi));
+      lmemcpy(lp(path), fi.path, lsizeof(path));
+      result = fs_get_entry(&entry, path, fi.parent, fi.disk);
+      strcpy_s(o_entry.name, entry.name, sizeof(o_entry.name));
+      o_entry.flags = entry.flags;
+      o_entry.size = entry.size;
+      lmemcpy(fi.entry, lp(&o_entry), lsizeof(o_entry));
       return result;
     }
 
     case SYSCALL_FS_READ_FILE: {
-      struct TSYSCALL_FSRWFILE* fi = param;
-      return fs_read_file(fi->buff, fi->path, fi->offset, fi->count);
+      struct TSYSCALL_FSRWFILE fi;
+      uchar path[MAX_PATH];
+      uint offset = 0;
+      lmemcpy(lp(&fi), lparam, lsizeof(fi));
+      lmemcpy(lp(path), fi.path, lsizeof(path));
+      while(offset < fi.count) {
+        uchar tbuff[BLOCK_SIZE];
+        uint count = min(sizeof(tbuff), fi.count-offset);
+        uint read = fs_read_file(tbuff, path, fi.offset+offset, count);
+        if(read >= ERROR_ANY) {
+          offset = read;
+          break;
+        }
+        if(read == 0) {
+          break;
+        }
+        lmemcpy(fi.buff+(lp_t)offset, lp(tbuff), (ul_t)read);
+        offset += read;
+      }
+      return offset;
     }
 
     case SYSCALL_FS_WRITE_FILE: {
-      struct TSYSCALL_FSRWFILE* fi = param;
-      return fs_write_file(fi->buff, fi->path, fi->offset, fi->count, fi->flags);
+      struct TSYSCALL_FSRWFILE fi;
+      uchar path[MAX_PATH];
+      uint offset = 0;
+      lmemcpy(lp(&fi), lparam, lsizeof(fi));
+      lmemcpy(lp(path), fi.path, lsizeof(path));
+      while(offset < fi.count) {
+        uchar tbuff[BLOCK_SIZE];
+        uint write;
+        uint count = min(sizeof(tbuff), fi.count-offset);
+        lmemcpy(lp(tbuff), fi.buff+(lp_t)fi.offset+(lp_t)offset, (ul_t)count);
+
+        write = fs_write_file(tbuff, path, fi.offset+offset, count, fi.flags);
+        if(write >= ERROR_ANY) {
+          offset = write;
+          break;
+        }
+        offset += write;
+      }
+      return offset;
     }
 
     case SYSCALL_FS_MOVE: {
-      struct TSYSCALL_FSSRCDST* fi = param;
-      return fs_move(fi->src, fi->dst);
+      struct TSYSCALL_FSSRCDST fi;
+      uchar src[MAX_PATH];
+      uchar dst[MAX_PATH];
+      lmemcpy(lp(&fi), lparam, lsizeof(fi));
+      lmemcpy(lp(src), fi.src, lsizeof(src));
+      lmemcpy(lp(dst), fi.dst, lsizeof(dst));
+      return fs_move(src, dst);
     }
 
     case SYSCALL_FS_COPY: {
-      struct TSYSCALL_FSSRCDST* fi = param;
-      return fs_copy(fi->src, fi->dst);
+      struct TSYSCALL_FSSRCDST fi;
+      uchar src[MAX_PATH];
+      uchar dst[MAX_PATH];
+      lmemcpy(lp(&fi), lparam, lsizeof(fi));
+      lmemcpy(lp(src), fi.src, lsizeof(src));
+      lmemcpy(lp(dst), fi.dst, lsizeof(dst));
+      return fs_copy(src, dst);
     }
 
     case SYSCALL_FS_DELETE: {
-      struct TSYSCALL_FSINFO* fi = param;
-      return fs_delete((uchar*)param);
+      uchar path[MAX_PATH];
+      lmemcpy(lp(path), lparam, lsizeof(path));
+      return fs_delete(path);
     }
 
-    case SYSCALL_FS_CREATE_DIRECTORY:
-      return fs_create_directory((uchar*)param);
+    case SYSCALL_FS_CREATE_DIRECTORY: {
+      uchar path[MAX_PATH];
+      lmemcpy(lp(path), lparam, lsizeof(path));
+      return fs_create_directory(path);
+    }
 
     case SYSCALL_FS_LIST: {
-      struct TSYSCALL_FSLIST* fi = param;
+      struct TSYSCALL_FSLIST fi;
       struct SFS_ENTRY entry;
-      uint result = fs_list(&entry, fi->path, fi->n);
-      strcpy_s(fi->entry->name, entry.name, sizeof(fi->entry->name));
-      fi->entry->flags = entry.flags;
-      fi->entry->size = entry.size;
+      struct FS_ENTRY o_entry;
+      uchar path[MAX_PATH];
+      uint result;
+      lmemcpy(lp(&fi), lparam, lsizeof(fi));
+      lmemcpy(lp(path), fi.path, lsizeof(path));
+      result = fs_list(&entry, path, fi.n);
+      strcpy_s(o_entry.name, entry.name, sizeof(o_entry.name));
+      o_entry.flags = entry.flags;
+      o_entry.size = entry.size;
+      lmemcpy(fi.entry, lp(&o_entry), lsizeof(o_entry));
       return result;
     }
 
     case SYSCALL_FS_FORMAT:
-      return fs_format((uint)*param);
+      return fs_format(lmem_getbyte(lparam));
 
     case SYSCALL_CLK_GET_TIME: {
-      struct TIME* t = param;
+      struct TIME t;
       uchar BCDtime[3];
       uchar BCDdate[3];
       get_time(BCDtime, BCDdate);
-      t->hour   = BCD_to_int(BCDtime[0]);
-      t->minute = BCD_to_int(BCDtime[1]);
-      t->second = BCD_to_int(BCDtime[2]);
-      t->year   = BCD_to_int(BCDdate[0]) + 2000;
-      t->month  = BCD_to_int(BCDdate[1]);
-      t->day    = BCD_to_int(BCDdate[2]);
+      t.hour   = BCD_to_int(BCDtime[0]);
+      t.minute = BCD_to_int(BCDtime[1]);
+      t.second = BCD_to_int(BCDtime[2]);
+      t.year   = BCD_to_int(BCDdate[0]) + 2000;
+      t.month  = BCD_to_int(BCDdate[1]);
+      t.day    = BCD_to_int(BCDdate[2]);
+      lmemcpy(lparam, lp(t), lsizeof(t));
       return 0;
     }
 
     case SYSCALL_CLK_GET_MILISEC: {
-      ul_t* timer_ms = param;
-      *timer_ms = system_timer_ms;
+      lmemcpy(lparam, lp(&system_timer_ms), lsizeof(system_timer_ms));
       return 0;
     }
 
     case SYSCALL_NET_RECV: {
-      struct TSYSCALL_NETOP* no = param;
-      return net_recv(no->addr, no->buff, no->size);
+      struct TSYSCALL_NETOP no;
+      uint8_t addr[4];
+      uint8_t buff[512];
+      uint result;
+      lmemcpy(lp(&no), lparam, lsizeof(no));
+      result = net_recv(addr, buff, no.size);
+      lmemcpy(no.addr, lp(addr), lsizeof(addr));
+      lmemcpy(no.buff, lp(buff), (ul_t)no.size);
+      return result;
     }
 
     case SYSCALL_NET_SEND: {
-      struct TSYSCALL_NETOP* no = param;
-      return net_send(no->addr, no->buff, no->size);
+      struct TSYSCALL_NETOP no;
+      uint8_t addr[4];
+      uint8_t buff[4];
+      lmemcpy(lp(&no), lparam, lsizeof(no));
+      lmemcpy(lp(addr), no.addr, lsizeof(addr));
+      lmemcpy(lp(buff), no.buff, (ul_t)no.size);
+      return net_send(addr, buff, no.size);
     }
   }
 
@@ -702,6 +815,7 @@ void kernel()
   } else {
     io_set_text_mode();
   }
+
   io_show_cursor();
   io_clear_screen();
 
@@ -802,7 +916,7 @@ void kernel()
     else if(strcmp(argv[0], "cls") == 0) {
       /* Cls command: clear the screen */
       if(argc == 1) {
-        result = syscall(SYSCALL_IO_CLEAR_SCREEN, 0);
+        result = syscall(SYSCALL_IO_CLEAR_SCREEN, 0L);
       } else {
         putstr("usage: cls\n\r");
       }
@@ -1036,7 +1150,7 @@ void kernel()
 
         /* List entries */
         for(i=0; i<n; i++) {
-          uchar dst[64];
+          uchar dst[MAX_PATH];
           result = fs_list(&entry, ROOT_DIR_NAME, i);
           if(result >= ERROR_ANY) {
             putstr("Error copying files. Aborted\n\r");
@@ -1069,7 +1183,7 @@ void kernel()
       /* Read command: read a file */
       if(argc==2 || (argc==3 && strcmp(argv[1],"hex")==0)) {
         uint offset = 0;
-        uchar buff[128];
+        uchar buff[512];
         memset(buff, 0, sizeof(buff));
         /* While it can read the file, print it */
         while(result = fs_read_file(buff, argv[argc-1], offset, sizeof(buff))) {
@@ -1229,13 +1343,32 @@ void kernel()
       if(result < ERROR_ANY) {
         /* Found */
         if(entry.flags & T_FILE) {
+          uint offset = 0;
           /* It's a file: load it */
-          uint mem_size = min((uint)entry.size, 0xFFFF - EXTERN_PROGRAM_MEMLOC);
+          uint mem_size = min((uint)entry.size, UPROG_ARGLOC-UPROG_MEMLOC);
           if(mem_size < (uint)entry.size) {
             putstr("not enough memory\n\r");
             continue;
           }
-          result = fs_read_file(EXTERN_PROGRAM_MEMLOC, prog_file_name, 0, mem_size);
+          while(offset < mem_size) {
+            uint r;
+            uint count;
+            uchar buff[512];
+            count = min(mem_size-offset, sizeof(buff));
+            r = fs_read_file(buff, prog_file_name, offset, count);
+            if(r<ERROR_ANY) {
+              uint b;
+              for(b=0; b<r; b++) {
+                lmem_setbyte((lp_t)(UPROG_MEMSEG<<4)+UPROG_MEMLOC+(lp_t)(offset+b), buff[b]);
+              }
+              offset += r;
+            } else  {
+              putstr("error loading file\n\r");
+              debugstr("error loading file\n\r");
+              result = ERROR_IO;
+              break;
+            }
+          }
         } else {
           /* It's not a file: error */
           result = ERROR_NOT_FOUND;
@@ -1245,7 +1378,10 @@ void kernel()
       if(result >= ERROR_ANY || result == 0) {
         putstr("unkown command\n\r");
       } else {
-        extern_main* m = EXTERN_PROGRAM_MEMLOC;
+        uint uarg = 0;
+        uint c = 0;
+        lp_t arg_var = (UPROG_MEMSEG<<4)+UPROG_ARGLOC;
+        lp_t arg_str = (UPROG_MEMSEG<<4)+UPROG_STRLOC;
 
         /* Check name ends with ".bin" */
         if(strcmp(&prog_file_name[strchr(prog_file_name, '.') - 1], prog_ext)) {
@@ -1253,11 +1389,21 @@ void kernel()
           continue;
         }
 
+        /* Create argv copy in program segment */
+        for(uarg=0; uarg<argc; uarg++) {
+          lmem_setbyte(arg_var+(lp_t)(2*uarg), (UPROG_STRLOC+c)&0xFF);
+          lmem_setbyte(arg_var+(lp_t)(2*uarg+1), ((UPROG_STRLOC+c)>>8)&0xFF);
+          for(i=0; i<strlen(argv[uarg])+1; i++) {
+            lmem_setbyte(arg_str+(lp_t)c, argv[uarg][i]);
+            c++;
+          }
+        }
+
         debugstr("CLI: Running program %s (%d bytes)\n\r",
           prog_file_name, (uint)entry.size);
 
         /* Run program */
-        m(argc, argv);
+        uprog_call(argc, UPROG_ARGLOC);
       }
     }
   }

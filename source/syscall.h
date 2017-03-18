@@ -59,32 +59,32 @@
 
 struct TSYSCALL_FSINFO {
   uint               disk_index;
-  struct CFS_INFO*   info;
+  lp_t               info; /* FS_INFO */
 };
 
 struct TSYSCALL_FSENTRY {
-  struct FS_ENTRY*   entry;
-  uchar*             path;
+  lp_t               entry; /* FS_ENTRY */
+  lp_t               path; /* str */
   uint               parent;
   uint               disk;
 };
 
 struct TSYSCALL_FSRWFILE {
-  uchar*             buff;
-  uchar*             path;
+  lp_t               buff; /* byte[] */
+  lp_t               path; /* str */
   uint               offset;
   uint               count;
   uint               flags;
 };
 
 struct TSYSCALL_FSSRCDST {
-  uchar*             src;
-  uchar*             dst;
+  lp_t               src; /* str */
+  lp_t               dst; /* str */
 };
 
 struct TSYSCALL_FSLIST {
-  struct FS_ENTRY*   entry;
-  uchar*             path;
+  lp_t               entry; /* FS_ENTRY */
+  lp_t               path; /* str */
   uint               n;
 };
 
@@ -98,8 +98,8 @@ struct TSYSCALL_POSATTR {
 struct TSYSCALL_POSITION {
   uint               x;
   uint               y;
-  uint*              px;
-  uint*              py;
+  lp_t               px; /* uint */
+  lp_t               py; /* uint */
 };
 
 struct TSYSCALL_LMEM {
@@ -108,8 +108,8 @@ struct TSYSCALL_LMEM {
 };
 
 struct TSYSCALL_NETOP {
-  uint8_t*           addr;
-  uchar*             buff;
+  lp_t               addr; /* uint8_t[4] */
+  lp_t               buff; /* byte[] */
   uint               size;
 };
 

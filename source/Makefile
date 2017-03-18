@@ -19,7 +19,7 @@ programs: $(PROGDIR)edit.bin $(PROGDIR)nas.bin $(PROGDIR)unet.bin
 
 $(PROGDIR)%.bin: $(PROGDIR)%.c $(ULIBDIR)ulib.o $(ULIBDIR)x86.o
 	$(CC86) $(CFLAGS) -o $(PROGDIR)$*.o -c $(PROGDIR)$*.c
-	$(LD86) $(LDFLAGS) -T 0xE000 -o $@ $(ULIBDIR)x86.o $(PROGDIR)$*.o $(ULIBDIR)ulib.o
+	$(LD86) $(LDFLAGS) -T 0x0000 -o $@ $(ULIBDIR)x86.o $(PROGDIR)$*.o $(ULIBDIR)ulib.o
 
 $(BOOTDIR)boot.bin: $(BOOTDIR)boot.s
 	$(NASM) -O0 -w+orphan-labels -f bin -o $@ $(BOOTDIR)boot.s

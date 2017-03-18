@@ -25,11 +25,6 @@ static uint cursor_col = 0;
 static uint cursor_row = 0;
 static uint cursor_shown = 0;
 
-/* Local screen buffer copy */
-static lp_t pixel_buffer = 0;
-static lp_t pixel_buffer_top = 0;
-static lp_t pixel_buffer_pointer = 0;
-
 /* Pointer to VIDEO memory */
 static lp_t VIDEO_MEM = 0x000A0000L;
 
@@ -37,22 +32,14 @@ static lp_t VIDEO_MEM = 0x000A0000L;
 static lp_t BIOS_font = 0;
 static uint BIOS_font_offset = 8;
 
+/* Current VESA bank */
+static ul_t current_bank = 0;
+
 /*
  * Enable video mode
  */
 void video_enable()
 {
-  /* Create buffer */
-  if(pixel_buffer == 0) {
-    pixel_buffer = lmalloc(
-      (ul_t)screen_width_px*(ul_t)screen_height_px);
-
-    pixel_buffer_top =
-      (ul_t)screen_width_px*(ul_t)screen_height_px;
-
-    pixel_buffer_pointer = 0;
-  }
-
   /* Reset window */
   video_window_y = 0;
 
@@ -72,35 +59,34 @@ void video_enable()
  */
 void video_disable()
 {
-  /* Free buffer */
-  if(pixel_buffer) {
-    lmfree(pixel_buffer);
-    pixel_buffer = 0;
-  }
-
   /* No longer a valid pointer */
   BIOS_font = 0;
 }
 
 /*
- * Get pixel address in local video buffer
+ * Get pixel address
  */
-static lp_t get_pixel_buffer_addr(uint x, uint y)
+static uint get_pixel(uint x, uint y)
 {
-  lp_t offset_x = x;
-  lp_t offset_y = (lp_t)y*(lp_t)screen_width_px;
-  lp_t offset_buff = (lp_t)pixel_buffer_pointer+(lp_t)offset_x+(lp_t)offset_y;
-  lp_t pixel_addr = pixel_buffer + (lp_t)offset_buff%(lp_t)pixel_buffer_top;
+  ul_t addr = (ul_t)x + (ul_t)screen_width_px*(ul_t)(y+video_window_y);
+  ul_t bank_size = 0x10000L; /* 64KB memory granularity works in 95% computers */
+  ul_t bank_number = (ul_t)addr/(ul_t)bank_size;
+  ul_t bank_offset = (ul_t)addr%(ul_t)bank_size;
 
-  return pixel_addr;
+  /* This is very expensive, do only if actually needed */
+  if(bank_number != current_bank) {
+    io_set_vesa_bank(bank_number);
+    current_bank = bank_number;
+  }
+
+  return (uint)lmem_getbyte(VIDEO_MEM + bank_offset);
 }
 
 /*
- * Set pixel without checking the local video buffer
+ * Set pixel
  */
-static void video_set_pixel_no_check(uint x, uint y, uint c)
+void video_set_pixel(uint x, uint y, uint c)
 {
-  static ul_t current_bank = 0;
   ul_t addr = (ul_t)x + (ul_t)screen_width_px*(ul_t)(y+video_window_y);
   ul_t bank_size = 0x10000L; /* 64KB memory granularity works in 95% computers */
   ul_t bank_number = (ul_t)addr/(ul_t)bank_size;
@@ -113,29 +99,6 @@ static void video_set_pixel_no_check(uint x, uint y, uint c)
   }
 
   lmem_setbyte(VIDEO_MEM + bank_offset, c); /* Set memory */
-}
-
-/*
- * Set pixel without updating the local video buffer
- */
-static void video_set_pixel_no_update(uint x, uint y, uint c)
-{
-  lp_t buff_addr = get_pixel_buffer_addr(x, y);
-  if(lmem_getbyte(buff_addr) != c) {
-    video_set_pixel_no_check(x, y, c);
-  }
-}
-
-/*
- * Set pixel checking and updating the local video buffer
- */
-void video_set_pixel(uint x, uint y, uint c)
-{
-  lp_t buff_addr = get_pixel_buffer_addr(x, y);
-  if(lmem_getbyte(buff_addr) != c) {
-    video_set_pixel_no_check(x, y, c);
-    lmem_setbyte(buff_addr, c); /* Update local buffer */
-  }
 }
 
 /*
@@ -160,9 +123,7 @@ void video_clear_screen()
   /* Repaint full screen */
   for(j=0; j<screen_height_px; j++) {
     for(i=0; i<screen_width_px; i++){
-      lp_t addr = get_pixel_buffer_addr(i, j);
-      video_set_pixel_no_check(i, j, DEF_BACKGROUND);
-      lmem_setbyte(addr, DEF_BACKGROUND);
+      video_set_pixel(i, j, DEF_BACKGROUND);
     }
   }
 
@@ -283,26 +244,29 @@ static void update_cursor_after_char(uchar c)
 
     /* After two full screens, reset window */
     if(video_window_y > 2*screen_height_px) {
+      uchar* scline = malloc(screen_width_px);
+      uint v_w_y = video_window_y;
       video_window_y = 0;
       for(j=video_font_h; j<screen_height_px; j++) {
         for(i=0; i<screen_width_px; i++){
-        lp_t addr = get_pixel_buffer_addr(i, j);
-        video_set_pixel_no_check(i, j, lmem_getbyte(addr));
+          scline[i] = get_pixel(i, j + v_w_y);
+        }
+        for(i=0; i<screen_width_px; i++){
+          video_set_pixel(i, j, (uint)scline[i]);
         }
       }
+      mfree(scline);
     }
 
     /* Clear new lines */
     for(i=0; i<screen_width_px; i++){
       for(j=screen_height_px; j<screen_height_px+video_font_h; j++) {
-        video_set_pixel_no_check(i, j, DEF_BACKGROUND);
-        lmem_setbyte(get_pixel_buffer_addr(i, j-screen_height_px), DEF_BACKGROUND);
+        video_set_pixel(i, j, DEF_BACKGROUND);
       }
     }
 
     /* Fast hardware scroll without moving data */
     io_scroll_screen();
-    pixel_buffer_pointer = get_pixel_buffer_addr(0, video_font_h) - pixel_buffer;
 
     /* Reset cursor */
     cursor_col = 0;

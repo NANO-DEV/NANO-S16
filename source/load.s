@@ -38,8 +38,8 @@ _main:
 
 
   ; Enable A20 line
-  mov  ax,2401h               ; A20-Gate Activate by BIOS
-  int  15h
+  mov  ax, 0x2401             ; A20-Gate Activate by BIOS
+  int  0x15
 
   cli
   push es                     ; Save segment, disable interrupts
@@ -83,7 +83,7 @@ LOADSEG EQU 0x0800 ; Where this code is loaded
 SECTION .bss
 
 kernel_stack:
-resb 0x2000                    ; kernel stack
+resb 0x3000                    ; kernel stack
 kernel_stack_top:
 global _disk_buff
 _disk_buff:

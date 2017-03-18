@@ -8,8 +8,8 @@
 /* Default data types */
 typedef unsigned char      uchar;
 typedef unsigned int       uint;
-typedef unsigned long int  ul_t;
-typedef unsigned long int  lp_t;
+typedef unsigned long int  ul_t; /* ulong */
+typedef unsigned long int  lp_t; /* long pointer */
 
 /* Size specific data types */
 typedef signed char        int8_t;

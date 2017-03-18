@@ -8,7 +8,7 @@
 #define EOF 0xFFE0 /* End Of File */
 
 /* Code generation vars */
-uint cg_origin = 0xE000; /* Absolute pos in segment */
+uint cg_origin = 0x0000; /* Absolute pos in segment */
 
 /* Symbol types */
 enum S_TYPE {
@@ -85,6 +85,7 @@ enum I_DEF {
   I_CMP_RRMW,
   I_CMP_RMRW,
   I_RET,
+  I_RETF,
   I_INT,
   I_CALL,
   I_JMP,
@@ -151,6 +152,7 @@ struct IDATA {
   "cmp",  0x3B, 2, O_RW,  O_RMW, O_ANY,   R_ANY, R_BX,  0,
   "cmp",  0x39, 2, O_RMW, O_RW,  O_ANY,   R_BX,  R_ANY, 0,
   "ret",  0xC3, 0, O_ANY, O_ANY, O_ANY,   0,     0,     0,
+  "retf", 0xCB, 0, O_ANY, O_ANY, O_ANY,   0,     0,     0,
   "int",  0xCD, 1, O_IW,  O_ANY, O_ANY,   0,     0,     0,
   "call", 0xE8, 1, O_IW,  O_ANY, O_ANY,   0,     0,     0,
   "jmp",  0xE9, 1, O_IW,  O_ANY, O_ANY,   0,     0,     0,
@@ -208,6 +210,7 @@ uint encode_instruction(uchar* buffer, uint offset, uchar id, uint* op)
 {
   switch(id) {
 
+  case I_RETF:
   case I_RET: {
     buffer[offset++] = i_data[id].opcode;
     debugstr(": %2x", buffer[offset-1]);
@@ -636,12 +639,12 @@ uint main(uint argc, uchar* argv[])
   uchar ofile[14];
 
   /* Input file buffer and offset */
-  uchar fbuff[96];
+  uchar fbuff[2048];
   uint  foffset = 0;
   uint  fline = 1;
 
   /* Output buffer and offset */
-  uchar obuff[256];
+  uchar obuff[1024];
   uint  ooffset = 0;
 
   /* Check args */

@@ -75,10 +75,6 @@ extern void io_out_char_serial(uchar c);
  */
 extern uchar io_in_char_serial();
 /*
- * Halt the computer
- */
-extern void halt();
-/*
  * Get disk hardware info
  */
 extern uint get_disk_info(uint disk, uint* st, uint* hd, uint* cl);
@@ -107,29 +103,25 @@ extern void lmem_setbyte(lp_t addr, uchar b);
  */
 extern uchar lmem_getbyte(lp_t addr);
 /*
+ * User program far call
+ */
+extern uint uprog_call(uint argc, uchar* argv[]);
+/*
  * Write byte to port
  */
-void outb(uchar value, uint port);
+extern void outb(uchar value, uint port);
 /*
  * Read byte from port
  */
-uchar inb(uint port);
+extern uchar inb(uint port);
 /*
  * Write word to port
  */
-void outw(uint value, uint port);
+extern void outw(uint value, uint port);
 /*
  * Read word from port
  */
-uint inw(uint port);
-/*
- * Initialize timer (PIT)
- */
-void timer_init(ul_t freq);
-/*
- * Initialize PIC
- */
-void PIC_init();
+extern uint inw(uint port);
 /*
  * Power off system using APM
  */
@@ -138,5 +130,17 @@ extern void apm_shutdown();
  * Reboot system
  */
 extern void reboot();
+/*
+ * Halt the computer
+ */
+extern void halt();
+/*
+ * Initialize timer (PIT)
+ */
+void timer_init(ul_t freq);
+/*
+ * Initialize PIC
+ */
+void PIC_init();
 
 #endif   /* _HWx86_H */

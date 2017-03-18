@@ -123,6 +123,7 @@ _io_set_graphics_mode:
 ;
 global  _io_set_vesa_bank
 _io_set_vesa_bank:
+  cli
   push ax
   push bx
   push dx
@@ -136,6 +137,7 @@ _io_set_vesa_bank:
   pop  dx
   pop  bx
   pop  ax
+  sti
   ret
 
 
@@ -808,60 +810,6 @@ dsides dw 0             ; Current disk sides
 
 
 ;
-; void lmem_setbyte(lp_t addr, uchar b)
-; Set far memory byte
-;
-global _lmem_setbyte
-_lmem_setbyte:
-  push es
-  push cx
-  push bx
-  push ax
-
-  mov  bx, sp
-  mov  ecx, [bx+12]
-  sal  cx, 12
-  mov  es, cx
-  mov  cx, [bx+10]
-  mov  al, [bx+14]
-  mov  bx, cx
-
-  mov  [es:bx], al
-
-  pop  ax
-  pop  bx
-  pop  cx
-  pop  es
-  ret
-
-
-;
-; uchar lmem_getbyte(lp_t addr)
-; Get far memory byte
-;
-global _lmem_getbyte
-_lmem_getbyte:
-  push es
-  push cx
-  push bx
-
-  mov  bx, sp
-  mov  cx, [bx+10]
-  sal  cx, 12
-  mov  es, cx
-  mov  cx, [bx+8]
-  mov  bx, cx
-  mov  ax, 0
-
-  mov  al, [es:bx]
-
-  pop  bx
-  pop  cx
-  pop  es
-  ret
-
-
-;
 ; void outb(uchar value, uint port)
 ; write byte to port
 ;
@@ -939,6 +887,257 @@ _inw:
 	pop  dx
   pop  bx
   ret
+
+
+;
+; void apm_shutdown()
+;	Power off system using APM
+;
+global _apm_shutdown
+_apm_shutdown:
+  push ax
+  push bx
+  push cx
+  clc
+
+  ; Disconnect from any APM interface
+  mov  ax, 0x5304
+  mov  bx, 0
+  int  0x15
+  clc
+
+  ; Connect to real mode interface
+  mov  ax, 0x5301
+  mov  bx, 0
+  int  0x15
+  jc   .error
+
+  ; Enable power management
+  mov  ax, 0x5308
+  mov  bx, 0x0001
+  mov  cx, 0x0001
+  int  0x15
+  jc   .error
+
+  ; Power off
+  mov  ax, 0x5307
+  mov  bx, 0x0001
+  mov  cx, 0x0003
+  int  0x15
+
+.error:
+  clc
+  pop  cx
+  pop  bx
+  pop  ax
+  ret
+
+
+;
+; void reboot()
+;	Reboot system
+;
+global _reboot
+_reboot:
+  push ax
+  push dx
+
+  mov  dx, 0x64         ; Use keyboard line
+  mov  al, 0xFE
+  out  dx, al
+
+  pop dx
+  pop ax
+  ret
+
+
+;
+; void lmem_setbyte(lp_t addr, uchar b)
+; Set far memory byte
+;
+global _lmem_setbyte
+_lmem_setbyte:
+  cli
+  push es
+  push ecx
+  push bx
+  push ax
+
+  mov  bx, sp
+  mov  cx, [bx+14]
+  sal  cx, 12
+  mov  es, cx
+  mov  cx, [bx+12]
+  mov  al, [bx+16]
+  mov  bx, cx
+
+  mov  [es:bx], al
+
+  pop  ax
+  pop  bx
+  pop  ecx
+  pop  es
+  sti
+  ret
+
+
+;
+; uchar lmem_getbyte(lp_t addr)
+; Get far memory byte
+;
+global _lmem_getbyte
+_lmem_getbyte:
+  cli
+  push es
+  push ecx
+  push bx
+
+  mov  bx, sp
+  mov  cx, [bx+12]
+  sal  cx, 12
+  mov  es, cx
+  mov  cx, [bx+10]
+  mov  bx, cx
+  mov  ax, 0
+
+  mov  al, [es:bx]
+
+  pop  bx
+  pop  ecx
+  pop  es
+  sti
+  ret
+
+
+;
+; Enter kernel mode
+; Replace stack and data segments
+;
+global _enter_kernel
+_enter_kernel:
+  pop  dx               ; Save ret address
+  push es
+  push ds
+  pushad
+  pushfd
+  cli
+
+  mov  bx, KERNSEG      ; Kernel data segment
+  mov  es, bx
+  mov  ds, bx
+
+  mov  [.retadd], dx
+
+  mov  ax, ss           ; Store current stack
+  mov  bx, sp
+  cmp  ax, KERNSEG
+  je   .nset
+
+  mov  dx, KERNSEG      ; Set the kernel stack
+  mov  ss, dx
+  mov  dx, [kstack]
+  mov  sp, dx
+
+.nset:                  ; Push old stack
+  push ax
+  push bx
+
+  mov  ax, [.retadd]    ; Return
+  push ax
+  sti
+  cld
+  ret
+
+.retadd  dw 0
+
+
+;
+; Leave kernel mode
+; Restore stack and data segments
+;
+global _leave_kernel
+_leave_kernel:
+  pop  ax
+  mov  [.retadd], ax
+  cli
+
+  pop  bx               ; Pop old stack
+  pop  ax
+  mov  sp, bx
+  mov  ss, ax
+
+  popfd
+  popad                  ; Restore previous to call
+  mov  dx, [.retadd]
+  pop  ds
+  pop  es
+  push dx               ; and ret
+  ret
+
+.retadd  dw 0
+
+kstack  dw 0            ; Last kernel stack pointer
+
+
+;
+; uint uprog_call(uint argc, uchar* argv[])
+; User program far call
+;
+USERSEG equ 0x1800
+KERNSEG equ 0x0800
+
+global _uprog_call
+_uprog_call:
+  pusha
+
+  ; Get args
+  mov  bx, sp
+  mov  dx, [bx+18]
+  mov  [.arg0], dx
+  mov  dx, [bx+20]
+  mov  [.arg1], dx
+
+  cli
+  mov  ax, sp
+  mov  dx, USERSEG
+  mov  ss, dx
+  mov  dx, 0xFF7F
+  mov  sp, dx
+  push ax
+  mov  [kstack], ax
+  sti
+
+  mov  dx, [.arg1]      ; Push args
+  push dx
+  mov  dx, [.arg0]
+  push dx
+
+  mov  dx, USERSEG      ; Set data segment
+  mov  es, dx
+  mov  ds, dx
+
+  call USERSEG:0x0000   ; Call
+
+  mov  dx, KERNSEG      ; Restore data segment
+  mov  es, dx
+  mov  ds, dx
+
+  pop  dx               ; Remove pushed args
+  pop  dx
+
+  cli
+  pop  dx               ; Restore kernel stack
+  mov  sp, dx
+  mov  dx, KERNSEG
+  mov  ss, dx
+  sti
+
+  popa
+
+  ret
+
+.arg0 dw 0
+.arg1 dw 0
 
 
 ; All PIT related:
@@ -1063,22 +1262,14 @@ IRQ0_ms          dd 0 ; Number of whole ms between IRQs
 system_timer_fractions dd 0 ; Fractions of 1 ms since timer initialized
 extern _system_timer_freq, _system_timer_ms
 
+
 ;
 ; Handler for the IRQ0
 ; Used by timer (PIT)
 ;
 IRQ0_handler:
-	pushad
-  pushfd
-  push  ss
-  push  es
-  push  ds
-
-  cli
-  mov  ax, cs           ; Sometimes this is in an unknown state
-  mov  ds, ax           ; Still don't know why
-  mov  es, ax
-  mov  ss, ax
+  pushad
+  call _enter_kernel
 
 	mov  eax, [IRQ0_fractions]
   mov  ebx, [IRQ0_ms]                ; eax.ebx = amount of time between IRQs
@@ -1090,12 +1281,8 @@ IRQ0_handler:
   mov  al, PIC_EOI
   out  PORT_MPIC_COMMAND, al         ; Send the EOI to the PIC
 
-  pop  ds
-  pop  es
-  pop  ss
-  popfd
-	popad
-
+  call _leave_kernel
+  popad
 	iret
 
   extern _kernel_time_tick
@@ -1106,17 +1293,8 @@ IRQ0_handler:
 ; Used by mouse
 ;
 IRQ12_handler:
-	pushad
-  pushfd
-  push  ss
-  push  es
-  push  ds
-
-  cli
-  mov  ax, cs           ; Sometimes this is in an unknown state
-  mov  ds, ax           ; Still don't know why
-  mov  es, ax
-  mov  ss, ax
+  pushad
+	call _enter_kernel
 
   call _mouse_handler
 
@@ -1124,13 +1302,8 @@ IRQ12_handler:
   out  PORT_SPIC_COMMAND, al         ; Send the EOI to the PIC
   out  PORT_MPIC_COMMAND, al         ; Send the EOI to the PIC
 
-
-  pop  ds
-  pop  es
-  pop  ss
-  popfd
-	popad
-
+  call _leave_kernel
+  popad
 	iret
 
 extern _mouse_handler
@@ -1142,17 +1315,8 @@ extern _mouse_handler
 ; Used by network
 ;
 IRQ9_handler:
-	pushad
-  pushfd
-  push  ss
-  push  es
-  push  ds
-
-  cli
-  mov  ax, cs           ; Sometimes this is in an unknown state
-  mov  ds, ax           ; Still don't know why
-  mov  es, ax
-  mov  ss, ax
+  pushad
+	call _enter_kernel
 
   call _net_handler
 
@@ -1160,78 +1324,11 @@ IRQ9_handler:
   out  PORT_SPIC_COMMAND, al         ; Send the EOI to the PIC
   out  PORT_MPIC_COMMAND, al         ; Send the EOI to the PIC
 
-
-  pop  ds
-  pop  es
-  pop  ss
-  popfd
-	popad
-
+  call _leave_kernel
+  popad
 	iret
 
 extern _net_handler
-
-
-;
-; void apm_shutdown()
-;	Power off system using APM
-;
-global _apm_shutdown
-_apm_shutdown:
-  push ax
-  push bx
-  push cx
-  clc
-
-  ; Disconnect from any APM interface
-  mov  ax, 0x5304
-  mov  bx, 0
-  int  0x15
-  clc
-
-  ; Connect to real mode interface
-  mov  ax, 0x5301
-  mov  bx, 0
-  int  0x15
-  jc   .error
-
-  ; Enable power management
-  mov  ax, 0x5308
-  mov  bx, 0x0001
-  mov  cx, 0x0001
-  int  0x15
-  jc   .error
-
-  ; Power off
-  mov  ax, 0x5307
-  mov  bx, 0x0001
-  mov  cx, 0x0003
-  int  0x15
-
-.error:
-  clc
-  pop  cx
-  pop  bx
-  pop  ax
-  ret
-
-
-;
-; void reboot()
-;	Reboot system
-;
-global _reboot
-_reboot:
-  push ax
-  push dx
-
-  mov  dx, 0x64         ; Use keyboard line
-  mov  al, 0xFE
-  out  dx, al
-
-  pop dx
-  pop ax
-  ret
 
 
 ;
@@ -1389,29 +1486,102 @@ _install_ISR:
   sti
   ret
 
+
 ;
 ; SYS_ISR
 ; Syscall Interrput Service Routine
 ;
 SYS_ISR:
+  cli
+  push es
+  push ds
   pushad
 
-  cli
+  mov  bx, KERNSEG      ; Kernel data segment
+  mov  es, bx
+  mov  ds, bx
+
+  ; Get call params from current stack
+  mov  cx, ds
+  mov  dx, ss
   mov  bx, sp
-  mov  ax, [bx+32+6+4]  ; Get param 0
+
+  mov  ds, dx
+  mov  ax, [bx+32+6+12] ; Get param 1 (hi)
+  mov  ds, cx
+  mov  [.arg3], ax
+  mov  ds, dx
+  mov  ax, [bx+32+6+10] ; Get param 1 (lo)
+  mov  ds, cx
+  mov  [.arg2], ax
+  mov  ds, dx
+  mov  ax, [bx+32+6+8]  ; Get param 0
+  mov  ds, cx
+  mov  [.arg1], ax
+  mov  ds, dx
+  mov  ax, [bx+32+6+4]  ; Get cs
+  mov  ds, cx
+  mov  [.arg0], ax
+
+  ; Store current stack
+  mov  ax, ss
+  mov  bx, sp
+  cmp  ax, KERNSEG
+  je   .nset
+
+  ; Set the kernel stack
+  mov  dx, KERNSEG
+  mov  ss, dx
+  mov  dx, [kstack]
+  mov  sp, dx
+
+  ; Push old stack
+.nset:
   push ax
-  mov  ax, [bx+32+6+2]  ; Get param 1
+  push bx
+
+  ; Push args
+  mov  ax, [.arg3]
   push ax
-  call _kernel_service  ; Call
+  mov  ax, [.arg2]
+  push ax
+  mov  ax, [.arg1]
+  push ax
+  mov  ax, [.arg0]
+  push ax
+
+  ; Service
+  sti
+  call _kernel_service  ; Service
+  cli
+
+  ; Pop args
   pop  cx
   pop  cx
+  pop  cx
+  pop  cx
+
+  ; Store result
   mov  [.result], ax
 
-  sti
+  ; Pop old stack
+  pop  bx
+  pop  ax
+  mov  sp, bx
+  mov  ss, ax
+
+  ; Restore previous to call
   popad
   mov  ax, [.result]
+  pop  ds
+  pop  es
 
+  sti
   iret
 
-.result dw 0             ; Result of ISR
+.result dw 0            ; Result of ISR
+.arg0   dw 0
+.arg1   dw 0
+.arg2   dw 0
+.arg3   dw 0
 extern _kernel_service

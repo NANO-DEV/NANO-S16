@@ -37,7 +37,7 @@ uint rand()
   static ul_t seed = 0;
 
   if(seed == 0) {
-    syscall(SYSCALL_CLK_GET_MILISEC, &seed);
+    syscall(SYSCALL_CLK_GET_MILISEC, lp(&seed));
     seed += 0x11111111L;
   }
 
@@ -154,7 +154,7 @@ void get_mouse_state(uint mode, uint* x, uint* y, uint* b)
 {
   struct TSYSCALL_POSATTR pa;
   pa.attr = mode;
-  syscall(SYSCALL_IO_GET_MOUSE_STATE, &pa);
+  syscall(SYSCALL_IO_GET_MOUSE_STATE, lp(&pa));
   *x = pa.x;
   *y = pa.y;
   *b = pa.c;
@@ -165,7 +165,7 @@ void get_mouse_state(uint mode, uint* x, uint* y, uint* b)
  */
 void sputchar(uchar c)
 {
-  syscall(SYSCALL_IO_OUT_CHAR_SERIAL, &c);
+  syscall(SYSCALL_IO_OUT_CHAR_SERIAL, lp(&c));
 }
 
 /*
@@ -181,7 +181,7 @@ void sputstr(uchar* format, ...)
  */
 uchar sgetchar()
 {
-  return (uchar)syscall(SYSCALL_IO_IN_CHAR_SERIAL, 0);
+  return (uchar)syscall(SYSCALL_IO_IN_CHAR_SERIAL, 0L);
 }
 
 /*
@@ -189,7 +189,7 @@ uchar sgetchar()
  */
 void debugchar(uchar c)
 {
-  syscall(SYSCALL_IO_OUT_CHAR_DEBUG, &c);
+  syscall(SYSCALL_IO_OUT_CHAR_DEBUG, lp(&c));
 }
 
 /*
@@ -205,7 +205,7 @@ void debugstr(uchar* format, ...)
  */
 uint get_video_mode()
 {
-  return syscall(SYSCALL_IO_GET_VIDEO_MODE, 0);
+  return syscall(SYSCALL_IO_GET_VIDEO_MODE, 0L);
 }
 
 /*
@@ -213,7 +213,7 @@ uint get_video_mode()
  */
 void set_video_mode(uint mode)
 {
-  syscall(SYSCALL_IO_SET_VIDEO_MODE, &mode);
+  syscall(SYSCALL_IO_SET_VIDEO_MODE, lp(&mode));
 }
 
 /*
@@ -224,9 +224,9 @@ void get_screen_size(uint mode, uint* width, uint* height)
   struct TSYSCALL_POSITION ps;
   ps.x = mode;
   ps.y = 0;
-  ps.px = width;
-  ps.py = height;
-  syscall(SYSCALL_IO_GET_SCREEN_SIZE, &ps);
+  ps.px = lp(width);
+  ps.py = lp(height);
+  syscall(SYSCALL_IO_GET_SCREEN_SIZE, lp(&ps));
 }
 
 /*
@@ -234,7 +234,7 @@ void get_screen_size(uint mode, uint* width, uint* height)
  */
 void clear_screen()
 {
-  syscall(SYSCALL_IO_CLEAR_SCREEN, 0);
+  syscall(SYSCALL_IO_CLEAR_SCREEN, 0L);
 }
 
 /*
@@ -247,7 +247,7 @@ void set_pixel(uint x, uint y, uint color)
   ca.y = y;
   ca.c = color;
   ca.attr = 0;
-  syscall(SYSCALL_IO_SET_PIXEL, &ca);
+  syscall(SYSCALL_IO_SET_PIXEL, lp(&ca));
 }
 
 /*
@@ -260,7 +260,7 @@ void draw_char(uint x, uint y, uint c, uint color)
   ca.y = y;
   ca.c = c;
   ca.attr = color;
-  syscall(SYSCALL_IO_DRAW_CHAR, &ca);
+  syscall(SYSCALL_IO_DRAW_CHAR, lp(&ca));
 }
 
 /*
@@ -276,7 +276,7 @@ void draw_map(uint x, uint y, uchar* buff, uint width, uint height)
       ca.y = y+j;
       ca.c = buff[j*width + i];
       ca.attr = 0;
-      syscall(SYSCALL_IO_SET_PIXEL, &ca);
+      syscall(SYSCALL_IO_SET_PIXEL, lp(&ca));
     }
   }
 }
@@ -286,7 +286,7 @@ void draw_map(uint x, uint y, uchar* buff, uint width, uint height)
  */
 void putchar(uchar c)
 {
-  syscall(SYSCALL_IO_OUT_CHAR, &c);
+  syscall(SYSCALL_IO_OUT_CHAR, lp(&c));
 }
 
 /*
@@ -307,7 +307,7 @@ void putchar_attr(uint col, uint row, uchar c, uchar attr)
   ca.y = row;
   ca.c = c;
   ca.attr = attr;
-  syscall(SYSCALL_IO_OUT_CHAR_ATTR, &ca);
+  syscall(SYSCALL_IO_OUT_CHAR_ATTR, lp(&ca));
 }
 
 /*
@@ -318,9 +318,9 @@ void get_cursor_position(uint* col, uint* row)
   struct TSYSCALL_POSITION ps;
   ps.x = 0;
   ps.y = 0;
-  ps.px = col;
-  ps.py = row;
-  syscall(SYSCALL_IO_GET_CURSOR_POS, &ps);
+  ps.px = lp(col);
+  ps.py = lp(row);
+  syscall(SYSCALL_IO_GET_CURSOR_POS, lp(&ps));
 }
 
 /*
@@ -333,7 +333,7 @@ void set_cursor_position(uint col, uint row)
   ps.y = row;
   ps.px = 0;
   ps.py = 0;
-  syscall(SYSCALL_IO_SET_CURSOR_POS, &ps);
+  syscall(SYSCALL_IO_SET_CURSOR_POS, lp(&ps));
 }
 
 /*
@@ -341,7 +341,7 @@ void set_cursor_position(uint col, uint row)
  */
 void set_show_cursor(uint mode)
 {
-  syscall(SYSCALL_IO_SET_SHOW_CURSOR, &mode);
+  syscall(SYSCALL_IO_SET_SHOW_CURSOR, lp(&mode));
 }
 
 /*
@@ -349,8 +349,8 @@ void set_show_cursor(uint mode)
  */
 uchar getchar()
 {
-  uint c = KM_WAIT_KEY;
-  c = syscall(SYSCALL_IO_IN_KEY, &c);
+  uint m = KM_WAIT_KEY;
+  uint c = syscall(SYSCALL_IO_IN_KEY, lp(&m));
   return (uchar)(c & 0x00FF);
 }
 
@@ -359,7 +359,7 @@ uchar getchar()
  */
 uint getkey(uint mode)
 {
-  return syscall(SYSCALL_IO_IN_KEY, &mode);
+  return syscall(SYSCALL_IO_IN_KEY, lp(&mode));
 }
 
 /*
@@ -682,7 +682,7 @@ uint memcmp(uchar* mem1, uchar* mem2, uint size)
  */
 void* malloc(uint size)
 {
-  return (void*)syscall(SYSCALL_MEM_ALLOCATE, &size);
+  return (void*)syscall(SYSCALL_MEM_ALLOCATE, lp(&size));
 }
 
 /*
@@ -690,13 +690,13 @@ void* malloc(uint size)
  */
 void mfree(void* ptr)
 {
-  syscall(SYSCALL_MEM_FREE, ptr);
+  syscall(SYSCALL_MEM_FREE, (lp_t)ptr);
 }
 
 /*
  * Copy size bytes from src to dest (far memory)
  */
-ul_t lmemcpy(lp_t dst, ul_t dst_offs, lp_t src, ul_t src_offs, ul_t size)
+ul_t lmemcpy(lp_t dst, lp_t src, ul_t size)
 {
   ul_t i = 0;
   uint rdir;
@@ -704,7 +704,7 @@ ul_t lmemcpy(lp_t dst, ul_t dst_offs, lp_t src, ul_t src_offs, ul_t size)
   struct TSYSCALL_LMEM lsrc;
   lsrc.n = 0;
 
-  if(src+src_offs > dst+dst_offs) {
+  if(src > dst) {
     rdir = 0;
   } else {
     rdir = 1;
@@ -712,10 +712,10 @@ ul_t lmemcpy(lp_t dst, ul_t dst_offs, lp_t src, ul_t src_offs, ul_t size)
 
   for(i=0; i<size; i++) {
     lp_t c = rdir ? size-1L-i : i;
-    lsrc.dst = src + src_offs + c;
-    ldst.dst = dst + dst_offs + c;
-    ldst.n = syscall(SYSCALL_LMEM_GET, &lsrc);
-    syscall(SYSCALL_LMEM_SET, &ldst);
+    lsrc.dst = src + c;
+    ldst.dst = dst + c;
+    ldst.n = syscall(SYSCALL_LMEM_GET, lp(&lsrc));
+    syscall(SYSCALL_LMEM_SET, lp(&ldst));
   }
 
   return i;
@@ -732,7 +732,7 @@ ul_t lmemset(lp_t dest, uchar value, ul_t size)
 
   for(i=0; i<size; i++) {
     lm.dst = dest + i;
-    syscall(SYSCALL_LMEM_SET, &lm);
+    syscall(SYSCALL_LMEM_SET, lp(&lm));
   }
   return i;
 }
@@ -745,7 +745,7 @@ lp_t lmalloc(ul_t size)
   struct TSYSCALL_LMEM lm;
   lm.dst = 0;
   lm.n = size;
-  syscall(SYSCALL_LMEM_ALLOCATE, &lm);
+  syscall(SYSCALL_LMEM_ALLOCATE, lp(&lm));
   return lm.dst;
 }
 
@@ -757,7 +757,7 @@ void lmfree(lp_t ptr)
   struct TSYSCALL_LMEM lm;
   lm.dst = ptr;
   lm.n = 0;
-  syscall(SYSCALL_LMEM_FREE, &lm);
+  syscall(SYSCALL_LMEM_FREE, lp(&lm));
 }
 
 /*
@@ -767,8 +767,8 @@ uint get_fsinfo(uint disk_index, struct FS_INFO* info)
 {
   struct TSYSCALL_FSINFO fi;
   fi.disk_index = disk_index;
-  fi.info = info;
-  return syscall(SYSCALL_FS_GET_INFO, &fi);
+  fi.info = lp(info);
+  return syscall(SYSCALL_FS_GET_INFO, lp(&fi));
 }
 
 /*
@@ -777,11 +777,11 @@ uint get_fsinfo(uint disk_index, struct FS_INFO* info)
 uint get_entry(struct FS_ENTRY* entry, uchar* path, uint parent, uint disk)
 {
   struct TSYSCALL_FSENTRY fi;
-  fi.entry = entry;
-  fi.path = path;
+  fi.entry = lp(entry);
+  fi.path = lp(path);
   fi.parent = parent;
   fi.disk = disk;
-  return syscall(SYSCALL_FS_GET_ENTRY, &fi);
+  return syscall(SYSCALL_FS_GET_ENTRY, lp(&fi));
 }
 
 /*
@@ -790,12 +790,12 @@ uint get_entry(struct FS_ENTRY* entry, uchar* path, uint parent, uint disk)
 uint read_file(uchar* buff, uchar* path, uint offset, uint count)
 {
   struct TSYSCALL_FSRWFILE fi;
-  fi.buff = buff;
-  fi.path = path;
+  fi.buff = lp(buff);
+  fi.path = lp(path);
   fi.offset = offset;
   fi.count = count;
   fi.flags = 0;
-  return syscall(SYSCALL_FS_READ_FILE, &fi);
+  return syscall(SYSCALL_FS_READ_FILE, lp(&fi));
 }
 
 /*
@@ -804,12 +804,12 @@ uint read_file(uchar* buff, uchar* path, uint offset, uint count)
 uint write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags)
 {
   struct TSYSCALL_FSRWFILE fi;
-  fi.buff = buff;
-  fi.path = path;
+  fi.buff = lp(buff);
+  fi.path = lp(path);
   fi.offset = offset;
   fi.count = count;
   fi.flags = flags;
-  return syscall(SYSCALL_FS_WRITE_FILE, &fi);
+  return syscall(SYSCALL_FS_WRITE_FILE, lp(&fi));
 }
 
 /*
@@ -818,9 +818,9 @@ uint write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags)
 uint move(uchar* srcpath, uchar* dstpath)
 {
   struct TSYSCALL_FSSRCDST fi;
-  fi.src = srcpath;
-  fi.dst = dstpath;
-  return syscall(SYSCALL_FS_MOVE, &fi);
+  fi.src = lp(srcpath);
+  fi.dst = lp(dstpath);
+  return syscall(SYSCALL_FS_MOVE, lp(&fi));
 }
 
 /*
@@ -829,9 +829,9 @@ uint move(uchar* srcpath, uchar* dstpath)
 uint copy(uchar* srcpath, uchar* dstpath)
 {
   struct TSYSCALL_FSSRCDST fi;
-  fi.src = srcpath;
-  fi.dst = dstpath;
-  return syscall(SYSCALL_FS_COPY, &fi);
+  fi.src = lp(srcpath);
+  fi.dst = lp(dstpath);
+  return syscall(SYSCALL_FS_COPY, lp(&fi));
 }
 
 /*
@@ -839,7 +839,7 @@ uint copy(uchar* srcpath, uchar* dstpath)
  */
 uint delete(uchar* path)
 {
-  return syscall(SYSCALL_FS_DELETE, path);
+  return syscall(SYSCALL_FS_DELETE, lp(path));
 }
 
 /*
@@ -847,7 +847,7 @@ uint delete(uchar* path)
  */
 uint create_directory(uchar* path)
 {
-  return syscall(SYSCALL_FS_CREATE_DIRECTORY, path);
+  return syscall(SYSCALL_FS_CREATE_DIRECTORY, lp(path));
 }
 
 /*
@@ -856,10 +856,10 @@ uint create_directory(uchar* path)
 uint list(struct FS_ENTRY* entry, uchar* path, uint n)
 {
   struct TSYSCALL_FSLIST fi;
-  fi.entry = entry;
-  fi.path = path;
+  fi.entry = lp(entry);
+  fi.path = lp(path);
   fi.n = n;
-  return syscall(SYSCALL_FS_LIST, &fi);
+  return syscall(SYSCALL_FS_LIST, lp(&fi));
 }
 
 /*
@@ -867,7 +867,7 @@ uint list(struct FS_ENTRY* entry, uchar* path, uint n)
  */
 uint format(uint disk)
 {
-  return syscall(SYSCALL_FS_FORMAT, &disk);
+  return syscall(SYSCALL_FS_FORMAT, lp(&disk));
 }
 
 /*
@@ -875,7 +875,7 @@ uint format(uint disk)
  */
 void time(struct TIME* t)
 {
-  syscall(SYSCALL_CLK_GET_TIME, t);
+  syscall(SYSCALL_CLK_GET_TIME, lp(t));
 }
 
 /*
@@ -884,7 +884,7 @@ void time(struct TIME* t)
 ul_t get_timer()
 {
   ul_t timer_ms;
-  syscall(SYSCALL_CLK_GET_MILISEC, &timer_ms);
+  syscall(SYSCALL_CLK_GET_MILISEC, lp(&timer_ms));
   return timer_ms;
 }
 
@@ -894,10 +894,10 @@ ul_t get_timer()
 void wait(uint miliseconds)
 {
   ul_t initial_timer, timer;
-  syscall(SYSCALL_CLK_GET_MILISEC, &initial_timer);
+  syscall(SYSCALL_CLK_GET_MILISEC, lp(&initial_timer));
   timer = initial_timer;
   while(timer < initial_timer + (ul_t)miliseconds) {
-    syscall(SYSCALL_CLK_GET_MILISEC, &timer);
+    syscall(SYSCALL_CLK_GET_MILISEC, lp(&timer));
   }
 }
 
@@ -929,10 +929,10 @@ void str_to_ip(uint8_t* ip, uchar* str)
 uint recv(uint8_t* src_ip, uchar* buff, uint buff_size)
 {
   struct TSYSCALL_NETOP no;
-  no.addr = src_ip;
-  no.buff = buff;
+  no.addr = lp(src_ip);
+  no.buff = lp(buff);
   no.size = buff_size;
-  return syscall(SYSCALL_NET_RECV, &no);
+  return syscall(SYSCALL_NET_RECV, lp(&no));
 }
 
 /*
@@ -941,8 +941,8 @@ uint recv(uint8_t* src_ip, uchar* buff, uint buff_size)
 uint send(uint8_t* dst_ip, uchar* buff, uint len)
 {
   struct TSYSCALL_NETOP no;
-  no.addr = dst_ip;
-  no.buff = buff;
+  no.addr = lp(dst_ip);
+  no.buff = lp(buff);
   no.size = len;
-  return syscall(SYSCALL_NET_SEND, &no);
+  return syscall(SYSCALL_NET_SEND, lp(&no));
 }

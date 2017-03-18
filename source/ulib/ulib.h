@@ -10,13 +10,14 @@
  */
 #define min(a,b) (a<b?a:b)
 #define max(a,b) (a>b?a:b)
+#define lsizeof(x) ((ul_t)(sizeof(x)))
 
 /*
  * System call
  * Avoid using it since there are already implemented
  * more general purpose functions in this library
  */
-uint syscall(uint service, void* param);
+uint syscall(uint service, lp_t param);
 
 
 /*
@@ -382,31 +383,30 @@ uint memcmp(uchar* mem1, uchar* mem2, uint size);
 
 
 /*
- * Allocate size bytes of contiguous near memory.
- * The near memory is very limited and mostly used for code.
- * Use far memory (see below) when large amounts of memory are required.
+ * Allocate size bytes of kernel memory.
+ * This call is not available for user programs
  */
 void* malloc(uint size);
 
 /*
- * Free allocated memory
+ * Free allocated kernel memory
  */
 void mfree(void* ptr);
 
 /* FAR MEMORY
  *
- * This operating system uses a compact memory model: one code segment and
- * multiple data segments.
+ * This operating system uses a mixed memory model: one segment for kernel
+ * (code, data and stack), one segment for user programs (code and stack) and
+ * multiple user program data segments.
  *
  * The far pointers (or long pointers, lp_t) allow access to more than 1MB of
  * data outside the code segment, while near memory pointers do it only for
- * 64KB inside the code segment. Vars and malloc allocations are usually
- * allocated in near memory and can be used in a conventional way. Conversely,
- * far memory must be always managed by the kernel:
+ * 64KB inside the code segment. Vars are usually allocated in near memory and
+ * can be used in a conventional way. Conversely, far memory must be always
+ * managed by the kernel:
  *
  * - Since the compiler does not "understand" far pointers, they can't be
- *     used where near or conventional pointers are expected, like most
- *     system calls.
+ *     used where conventional pointers are expected.
  * - Since the compiler does not "understand" far pointers, they can't be
  *     accessed by the usual way (pointer[offset] = value  : is not allowed).
  *     They can only be accessed using lmemcpy and lmemset functions.
@@ -416,14 +416,14 @@ void mfree(void* ptr);
  * Example:
  *
  * uchar cbuff[128];            // Conventional near memory
- * lp_t  xbuff = lmalloc(128);  // Long pointer, far memory
+ * lp_t  xbuff = lmalloc(128L);  // Long pointer, far memory
  *
  * // xbuff[0] = cbuff[0];  NOT ALLOWED
  * // cbuff[0] = xbuff[0];  NOT ALLOWED
  * // write(xbuff, ...); NOT ALLOWED. Instead, copy first to cbuff
  *
- * lmemcpy(xbuff, 0L, lp(cbuff), 0L, sizeof(buff)); // This is right
- * lmemcpy(lp(cbuff), 0L, xbuff, 0L, sizeof(buff)); // This is right
+ * lmemcpy(xbuff, lp(cbuff), lsizeof(buff)); // This is right
+ * lmemcpy(lp(cbuff), xbuff, lsizeof(buff)); // This is right
  *
  * lmfree(xbuff);
  */
@@ -436,7 +436,7 @@ lp_t lp(void* ptr);
 /*
  * Copy size bytes from src[src_offs] to dst[dst_offs] (far memory)
  */
-ul_t lmemcpy(lp_t dst, ul_t dst_offs, lp_t src, ul_t src_offs, ul_t size);
+ul_t lmemcpy(lp_t dst, lp_t src, ul_t size);
 
 /*
  * Set size bytes from src to value (far memory)
@@ -500,6 +500,8 @@ struct  FS_ENTRY {
   uchar flags;
   uint  size; /* bytes for files, items for directories */
 };
+
+#define MAX_PATH 72
 
 /* FS_INFO.fs_type types */
 #define FS_TYPE_UNKNOWN 0x000

@@ -544,7 +544,7 @@ uint provide_mac_address(uint8_t* ip)
 
     /* Request it and wait */
     arp_request(ip);
-    wait(2000);
+    wait(1000);
 
     /* Try again */
     mac = find_mac_in_table(ip);
@@ -905,6 +905,7 @@ uint net_send(uint8_t* dst_ip, uint8_t* buff, uint len)
   if(network_enabled) {
     return udp_send(dst_ip, NSUDP_PROTO_PORT, NSUDP_PROTO_PORT,
       IP_PROTOCOL_UDP, buff, len);
+			return 0;
   }
   return 1;
 }

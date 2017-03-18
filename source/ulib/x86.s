@@ -10,7 +10,19 @@
 ;
 global ___mkargv
 ___mkargv:
-  jmp _main
+  pop  dx
+  mov  [.a1], dx
+  pop  dx
+  mov  [.a2], dx
+  call _main
+  mov  dx, [.a2]
+  push dx
+  mov  dx, [.a1]
+  push dx
+  retf
+
+.a1 dw 0
+.a2 dw 0
 
 extern _main
 
@@ -18,12 +30,14 @@ extern _main
 INT_CODE equ 0x80
 
 ;
-; uint syscall(uint s, void* p)
+; uint syscall(uint s, lp_t p)
 ; Generate OS interrupt with parameter
 ;
 global _syscall
 _syscall:
+  push cs               ; Push cs
   int  INT_CODE         ; Interrupt
+  pop  dx
   ret
 
 
@@ -36,7 +50,7 @@ _lp:
   push bx
 
   mov  edx, 0
-  mov  dx, es
+  mov  dx, cs
   shl  edx, 4
 
   mov  eax, 0

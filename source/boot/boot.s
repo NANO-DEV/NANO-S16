@@ -72,7 +72,7 @@ start:
   mov  bx, [BUFFER]
   mov  ax, [es:bx+12]
   mov  bx, ax
-  add  bx, 112
+  add  bx, 127
   mov  [LASTBLOCK], bx
   jmp  .read_next       ; find where the bootable image starts
 .inc_loop:
@@ -99,8 +99,8 @@ disk_reset:
   pop  ax
   ret
 
-; disk_lba_to_hts -- Calculate head, track and sector for int 13h
-; IN: logical sector in AX; OUT: correct registers for int 13h
+; disk_lba_to_hts -- Calculate head, track and sector for int 0x13
+; IN: logical sector in AX; OUT: correct registers for int 0x13
 disk_lba_to_hts:
   push bx
   push ax
@@ -110,7 +110,7 @@ disk_lba_to_hts:
   mov  dx, 0            ; First the sector
   div  word [SECTORS]   ; Sectors per track
   add  dl, 0x01         ; Physical sectors start at 1
-  mov  cl, dl           ; Sectors belong in CL for int 13h
+  mov  cl, dl           ; Sectors belong in CL for int 0x13
   mov  ax, bx
 
   mov  dx, 0            ; Now calculate the head
