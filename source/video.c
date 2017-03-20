@@ -25,7 +25,7 @@ static uint cursor_col = 0;
 static uint cursor_row = 0;
 static uint cursor_shown = 0;
 
-/* Pointer to VIDEO memory */
+/* Pointer to VESA VIDEO memory */
 static lp_t VIDEO_MEM = 0x000A0000L;
 
 /* Pointer to BIOS font and offset between chars */
@@ -37,6 +37,7 @@ static ul_t current_bank = 0;
 
 /*
  * Enable video mode
+ * Does not set mode
  */
 void video_enable()
 {
@@ -64,7 +65,7 @@ void video_disable()
 }
 
 /*
- * Get pixel address
+ * Get pixel
  */
 static uint get_pixel(uint x, uint y)
 {
@@ -98,7 +99,7 @@ void video_set_pixel(uint x, uint y, uint c)
     current_bank = bank_number;
   }
 
-  lmem_setbyte(VIDEO_MEM + bank_offset, c); /* Set memory */
+  lmem_setbyte(VIDEO_MEM + bank_offset, c); /* Set */
 }
 
 /*

@@ -21,7 +21,7 @@ ul_t system_timer_ms = 10; /* ms since timer initialized */
 /* Initialize to 10 ms so all 0 timestamps are outdated */
 
 /* Mouse state */
-uint mouse_x = 0;
+uint mouse_x = 0; /* Position */
 uint mouse_y = 0;
 uint mouse_b = 0; /* Buttons */
 
@@ -49,6 +49,7 @@ struct DISKINFO disk_info[MAX_DISK];  /* Disk info */
 
 /*
  * Heap related
+ * This memory is only for kernel usage
  */
 #define HEAP_MAX_BLOCK   0x0080U
 #define HEAP_MEM_SIZE    0x0400U
@@ -132,6 +133,10 @@ static heap_free(void* ptr)
   return;
 }
 
+/*
+ * Far memory handling
+ * Public memory
+ */
 #define LMEM_START 0x00028000L
 #define LMEM_LIMIT 0x0009FC00L
 #define LMEM_BLOCK_SIZE 0x10L
@@ -230,7 +235,7 @@ static void lmem_free(lp_t ptr)
         lmem[i].start = 0;
         lmem[i].size = 0;
 
-        /* Keep list ordered and contiguous */
+        /* Keep the list sorted and contiguous */
         memcpy(&lmem[i], &lmem[i+1],
           (LMEM_MAX_BLOCK-i-1)*sizeof(struct LMEMBLOCK));
         lmem[LMEM_MAX_BLOCK-1].start = 0;
@@ -258,6 +263,7 @@ static uint BCD_to_int(uchar BCD)
  * Usually:
  * -Unpack parameters
  * -Redirect to the right kernel function
+ * -Pack and return parameters
  */
 uint kernel_service(uint cs, uint service, lp_t lparam)
 {
@@ -633,7 +639,7 @@ uint kernel_service(uint cs, uint service, lp_t lparam)
 void mouse_handler()
 {
   static uchar mouse_cycle = 0;
-  char mouse_byte[3];
+  static char mouse_byte[3];
   char m_x = 0;
   char m_y = 0;
 
@@ -673,6 +679,9 @@ void mouse_handler()
       mouse_y = screen_height_c;
     }
     break;
+  default:
+    mouse_cycle = 0;
+    break;
   }
 }
 
@@ -683,7 +692,7 @@ void mouse_handler()
 #define MS_WAIT_SIGNAL 1
 void mouse_wait(uchar type)
 {
-  uint time_out = 0x000F;
+  uint time_out = 0x00FF;
   if(type == MS_WAIT_DATA) {
     while(time_out--) {
       if((inb(0x64) & 1) == 1) {
@@ -777,9 +786,9 @@ void kernel_time_tick()
   uint i;
 
   /* Turn off floppy disk motors. Need to do this
-   * manually since some computers use the PIT to
-   * control this, but the PIT is now being used as
-   * system timer */
+   * manually since some computers use the default
+   * PIT handler to control this, but this handler
+   * is now being used only for timer purposes */
   for(i=0; i<2; i++) {
     if(disk_info[i].last_access != 0 &&
       system_timer_ms-disk_info[i].last_access > 3000) {
@@ -809,7 +818,7 @@ void kernel()
   /* Init far memory */
   lmem_init();
 
-  /* Some initialization is still needed */
+  /* Init video */
   if(graphics_mode) {
     io_set_graphics_mode();
   } else {
@@ -875,6 +884,9 @@ void kernel()
 
   /* Init mouse */
   mouse_init();
+
+  /* Init PCI */
+  pci_init();
 
   /* Init network */
   net_init();

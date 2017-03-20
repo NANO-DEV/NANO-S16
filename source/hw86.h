@@ -123,6 +123,14 @@ extern void outw(uint value, uint port);
  */
 extern uint inw(uint port);
 /*
+ * Write long to port
+ */
+extern void outl(ul_t value, uint port);
+/*
+ * Read long from port
+ */
+extern ul_t inl(uint port);
+/*
  * Power off system using APM
  */
 extern void apm_shutdown();

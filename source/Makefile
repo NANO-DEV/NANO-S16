@@ -24,8 +24,8 @@ $(PROGDIR)%.bin: $(PROGDIR)%.c $(ULIBDIR)ulib.o $(ULIBDIR)x86.o
 $(BOOTDIR)boot.bin: $(BOOTDIR)boot.s
 	$(NASM) -O0 -w+orphan-labels -f bin -o $@ $(BOOTDIR)boot.s
 
-kernel.n16: load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o net.o
-	$(LD86) $(LDFLAGS) -o $@ load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o net.o
+kernel.n16: load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o net.o pci.o
+	$(LD86) $(LDFLAGS) -o $@ load.o hw86.o kernel.o $(ULIBDIR)ulib.o $(ULIBDIR)x86.o fs.o video.o net.o pci.o
 
 load.o: load.s
 	$(NASM) $(NFLAGS) -o $@ load.s
@@ -50,6 +50,9 @@ fs.o: fs.h fs.c types.h kernel.h $(ULIBDIR)ulib.h
 
 net.o: net.h net.c
 	$(CC86) $(CFLAGS) -o $@ -c net.c
+
+pci.o: pci.h pci.c
+	$(CC86) $(CFLAGS) -o $@ -c pci.c
 
 clean:
 	@find . -name "*.o" -type f -delete

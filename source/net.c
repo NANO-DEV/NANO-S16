@@ -1,5 +1,6 @@
 #include "types.h"
 #include "hw86.h"
+#include "pci.h"
 #include "ulib/ulib.h"
 #include "net.h"
 
@@ -36,6 +37,7 @@
 
 /* Is network enabled */
 uint network_enabled = 1;
+uint net_irq = 9; /* network irq */
 
 /* Install nic IRQ handler */
 extern void install_net_IRQ_handler();
@@ -43,6 +45,14 @@ extern void install_net_IRQ_handler();
 /* Byte swap operation */
 #define bswap_16(value) \
 ((((value) & 0xff) << 8) | ((value) >> 8))
+
+#define NUM_COMPATIBLE_DEVICES 1
+struct DEVICE_ID {
+	uint16_t  vendor_id;
+	uint16_t  device_id;
+} ne2k_compatible[NUM_COMPATIBLE_DEVICES] = {
+	0x10EC, 0x8029, /* Realtek */
+};
 
 /* Registers */
 #define NE2K_CR		    0x00 /* Command register */
@@ -816,18 +826,35 @@ void net_init()
 
   /* Detect card */
   if(network_enabled == 1) {
+		struct PCI_DEVICE* pdev;
     network_enabled = 0;
-  	outb(0x80, base + NE2K_IMR); /* Disable interrupts except reset */
-    outb(0xFF, base + NE2K_ISR); /* Clear interrupts */
-  	outb(inb(base + NE2K_RESET), base + NE2K_RESET); /* Reset */
-    wait(10); /* Wait */
-    if((inb(base + NE2K_ISR) == 0x80)) { /* Detect reset interrupt */
-			debugstr("net: ne2000 compatible nic found\n\r");
-      network_enabled = 1;
-  	}
+
+		/* Find a compatible device */
+		for(i=0; i<NUM_COMPATIBLE_DEVICES; i++) {
+			pdev = pci_find_device(ne2k_compatible[i].vendor_id,
+				ne2k_compatible[i].device_id);
+
+			if(pdev) {
+				break;
+			}
+		}
+
+		/* If found, check */
+		if(pdev) {
+			base = pdev->bar0 & ~3;
+			net_irq = pdev->interrput_line;
+	  	outb(0x80, base + NE2K_IMR); /* Disable interrupts except reset */
+	    outb(0xFF, base + NE2K_ISR); /* Clear interrupts */
+	  	outb(inb(base + NE2K_RESET), base + NE2K_RESET); /* Reset */
+	    wait(250); /* Wait */
+	    if((inb(base + NE2K_ISR) == 0x80)) { /* Detect reset interrupt */
+				debugstr("net: ne2000 compatible nic found. base=%x irq=%x\n\r", base, net_irq);
+	      network_enabled = 1;
+	  	}
+		}
   }
 
-  /* Abort if network is not enabled */
+  /* Abort if network is not enabled or device not found */
   if(network_enabled == 0) {
 		debugstr("net: compatible nic not found\n\r");
     return;
@@ -915,16 +942,18 @@ uint net_send(uint8_t* dst_ip, uint8_t* buff, uint len)
  */
 uint net_recv(uint8_t* src_ip, uint8_t* buff, uint buff_size)
 {
-	/* Handle pending nic requests */
-	net_handler();
+	if(network_enabled) {
+		/* Handle pending nic requests */
+		net_handler();
 
-	/* Now check if there is something in the system buffer */
-  if(rcv_size > 0 && network_enabled) {
-    uint ret = min(rcv_size, buff_size);
-    memcpy(src_ip, rcv_addr, sizeof(rcv_addr));
-    memcpy(buff, rcv_buff, ret);
-    rcv_size = 0;
-    return ret;
-  }
+		/* Now check if there is something in the system buffer */
+	  if(rcv_size > 0) {
+	    uint ret = min(rcv_size, buff_size);
+	    memcpy(src_ip, rcv_addr, sizeof(rcv_addr));
+	    memcpy(buff, rcv_buff, ret);
+	    rcv_size = 0;
+	    return ret;
+	  }
+	}
   return 0;
 }

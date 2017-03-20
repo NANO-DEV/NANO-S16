@@ -6,7 +6,7 @@
 
 ;
 ; void dump_regs()
-;
+; Dump register values through debug output
 ;
 global _dump_regs
 _dump_regs:
@@ -181,7 +181,7 @@ _io_get_bios_font:
 
 ;
 ; void io_clear_screen()
-; Clears the screen
+; Clear the screen
 ;
 global _io_clear_screen
 _io_clear_screen:
@@ -422,7 +422,7 @@ _io_set_cursor_pos:
 
 ;
 ; uint io_in_key()
-;
+; Get key press
 ;
 global _io_in_key
 _io_in_key:
@@ -516,7 +516,7 @@ _get_time:
 
 ;
 ; uint read_disk_sector(uint disk, uint sector, uint n, uchar* buff)
-;
+; Read a disk sector
 ;
 global _read_disk_sector
 _read_disk_sector:
@@ -535,7 +535,7 @@ _read_disk_sector:
 
   call disk_lba_to_hts
 
-  mov  ah, 2            ; Params for int 13h: read disk sectors
+  mov  ah, 2            ; Params for int 0x13: read disk sectors
   mov  al, [bx+22]      ; Number of sectors to read
   mov  si, [bx+24]      ; Set ES:BX to point the buffer
   mov  bx, ds
@@ -586,7 +586,7 @@ _read_disk_sector:
 
 ;
 ; void turn_off_floppy_motors()
-; Since IRQ0 is overwritten, this must be done manually
+; Since IRQ0 is used for timer, this must be done manually
 ;
 global _turn_off_fd_motors
 _turn_off_fd_motors:
@@ -604,7 +604,7 @@ _turn_off_fd_motors:
 
 ;
 ; uint write_disk_sector(uint disk, uint sector, uint n, uchar* buff)
-;
+; Write disk sector
 ;
 global _write_disk_sector
 _write_disk_sector:
@@ -623,7 +623,7 @@ _write_disk_sector:
 
   call disk_lba_to_hts
 
-  mov  ah, 3            ; Params for int 13h: write disk sectors
+  mov  ah, 3            ; Params for int 0x13: write disk sectors
   mov  al, [bx+22]      ; Number of sectors to read
   mov  si, [bx+24]      ; Set ES:BX to point the buffer
   mov  bx, ds
@@ -674,8 +674,8 @@ disk_reset:
 
 
 ;
-; disk_lba_to_hts -- Calculate head, track and sector for int 13h
-; IN: logical sector in AX; OUT: correct registers for int 13h
+; disk_lba_to_hts -- Calculate head, track and sector for int 0x13
+; IN: logical sector in AX; OUT: correct registers for int 0x13
 ;
 disk_lba_to_hts:
   push bx
@@ -686,7 +686,7 @@ disk_lba_to_hts:
   mov  dx, 0            ; First the sector
   div  word [dsects]    ; Sectors per track
   add  dl, 01           ; Physical sectors start at 1
-  mov  cl, dl           ; Sectors belong in CL for int 13h
+  mov  cl, dl           ; Sectors belong in CL for int 0x13
   mov  ax, bx
 
   mov  dx, 0            ; Now calculate the head
@@ -850,7 +850,7 @@ _inb:
 
 
 ;
-; void outb(uint value, uint port)
+; void outw(uint value, uint port)
 ; write word to port
 ;
 global _outw
@@ -871,7 +871,7 @@ _outw:
 
 
 ;
-; uint inb(uint port)
+; uint inw(uint port)
 ; Read word from port
 ;
 global _inw
@@ -885,6 +885,46 @@ _inw:
 	in	 ax, dx
 
 	pop  dx
+  pop  bx
+  ret
+
+
+;
+; void outl(ul_t value, uint port)
+; write long to port
+;
+global _outl
+_outl:
+  push eax
+  push bx
+  push dx
+
+	mov	 bx, sp
+	mov	 eax, [bx+10]
+	mov	 dx, [bx+14]
+	out	 dx, eax
+
+  pop  dx
+  pop  bx
+  pop  eax
+	ret
+
+
+;
+; ul_t inl(uint port)
+; Read long from port
+;
+global _inl
+_inl:
+  push bx
+
+  mov  eax, 0
+  mov	 bx, sp
+	mov	 dx, [bx+4]
+	in	 eax, dx
+  mov  edx, eax
+  shr  edx, 16
+
   pop  bx
   ret
 
@@ -1309,12 +1349,11 @@ IRQ12_handler:
 extern _mouse_handler
 
 
-
 ;
-; Handler for the IRQ9
+; Handler for the net IRQ
 ; Used by network
 ;
-IRQ9_handler:
+IRQNET_handler:
   pushad
 	call _enter_kernel
 
@@ -1438,7 +1477,7 @@ _install_mouse_IRQ_handler:
 
 ;
 ; void install_net_IRQ_handler()
-; Add routine to interrupt vector table (IRQ9)
+; Add routine to interrupt vector table
 ;
 global _install_net_IRQ_handler
 _install_net_IRQ_handler:
@@ -1447,16 +1486,27 @@ _install_net_IRQ_handler:
   cli
 
   ; Install handler
+  mov  bx, [_net_irq]
+  sub  bl, 8
+  add  bl, INT_CODE_SPIC_BASE
+  mov  al, 4
+  mul  bl
+  mov  bx, ax
   mov  ax, 0
   mov  es, ax
-  mov  dx, IRQ9_handler
-  mov  [es:(INT_CODE_SPIC_BASE+1)*4], dx
+  mov  dx, IRQNET_handler
+  mov  [es:bx], dx
   mov  ax, cs
-  mov  [es:(INT_CODE_SPIC_BASE+1)*4+2], ax
+  mov  [es:bx+2], ax
 
   ; Set IRQ unmasked
+  mov  cx, [_net_irq]
+  sub  cl, 8
   in   al, PORT_SPIC_DATA
-  and  al, 11111101b
+  mov  bl, 1
+  shl  bl, cl
+  not  bl
+  and  al, bl
   out  PORT_SPIC_DATA, al
 
   sti
@@ -1465,6 +1515,7 @@ _install_net_IRQ_handler:
 
   ret
 
+extern _net_irq ; netword IRQ number, assumed > 8
 
 ;
 ; Install IRS
@@ -1580,7 +1631,7 @@ SYS_ISR:
   iret
 
 .result dw 0            ; Result of ISR
-.arg0   dw 0
+.arg0   dw 0            ; Args
 .arg1   dw 0
 .arg2   dw 0
 .arg3   dw 0
