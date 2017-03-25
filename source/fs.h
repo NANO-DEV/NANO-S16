@@ -9,7 +9,7 @@
 /* This file system provides files, directories, pathnames and
  * bootloading facilities */
 
-/* The file system divides up disk space into logical blocks of contiguous space.
+/* The file system divides disk space into logical blocks of contiguous space.
  * The size of blocks need not be the same size as the sector size of the disk
  * the file system resides on */
 #define BLOCK_SIZE 512  /* block size in bytes */

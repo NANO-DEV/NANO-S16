@@ -5,6 +5,8 @@
 #ifndef _VIDEO_H
 #define _VIDEO_H
 
+extern ul_t cursor_blink_timer;
+
 /*
  * Enable video mode, once graphics mode is set
  */
@@ -34,6 +36,7 @@ void video_draw_char(uint x, uint y, uint c, uint text_cl, uint back_cl);
 /* Terminal emulation. See IO functions */
 void video_show_cursor();
 void video_hide_cursor();
+void video_blink_cursor();
 void video_get_cursor_pos(uint* col, uint* row);
 void video_set_cursor_pos(uint col, uint row);
 void video_out_char(uchar c);

@@ -9,8 +9,6 @@
  * pixel drawing and terminal emulation
  */
 
-
-
 /* Default colors */
 #define DEF_BACKGROUND 0x00
 #define DEF_TEXT       0x07
@@ -25,8 +23,16 @@ static uint cursor_col = 0;
 static uint cursor_row = 0;
 static uint cursor_shown = 0;
 
+/* Buffer for storing and restoring pixels behind emulated cursor */
+static uchar cursor_buff[FNT_W-2];
+static uint cursor_buff_x = 0;
+static uint cursor_buff_y = 0;
+static uint cursor_blink_state = 0; /* 0: hidden 1: shown */
+ul_t cursor_blink_timer = 0;
+
 /* Pointer to VESA VIDEO memory */
 static lp_t VIDEO_MEM = 0x000A0000L;
+#define VESA_BANK_SIZE  0x10000L /* 64KB memory granularity works in 95% computers */
 
 /* Pointer to BIOS font and offset between chars */
 static lp_t BIOS_font = 0;
@@ -39,6 +45,7 @@ static ul_t current_bank = 0;
  * Enable video mode
  * Does not set mode
  */
+static void update_cursor_buffer();
 void video_enable()
 {
   /* Reset window */
@@ -48,6 +55,12 @@ void video_enable()
   cursor_col = 0;
   cursor_row = 0;
   cursor_shown = 1;
+
+  /* Reset cursor buffer */
+  cursor_buff_x = 0;
+  cursor_buff_y = 0;
+  cursor_blink_state = 0;
+  update_cursor_buffer();
 
   /* Get font */
   if(BIOS_font == 0) {
@@ -67,12 +80,19 @@ void video_disable()
 /*
  * Get pixel
  */
-static uint get_pixel(uint x, uint y)
+static uint get_pixel(uint x, uint y, uint read_cursor_buffer)
 {
   ul_t addr = (ul_t)x + (ul_t)screen_width_px*(ul_t)(y+video_window_y);
-  ul_t bank_size = 0x10000L; /* 64KB memory granularity works in 95% computers */
+  ul_t bank_size = VESA_BANK_SIZE;
   ul_t bank_number = (ul_t)addr/(ul_t)bank_size;
   ul_t bank_offset = (ul_t)addr%(ul_t)bank_size;
+
+  /* Read cursor pixel buffer */
+  if(read_cursor_buffer != 0 && cursor_shown &&
+    x>=cursor_buff_x && x<cursor_buff_x+FNT_W-2 &&
+    y==cursor_buff_y) {
+    return (uint)cursor_buff[x-cursor_buff_x];
+  }
 
   /* This is very expensive, do only if actually needed */
   if(bank_number != current_bank) {
@@ -89,7 +109,34 @@ static uint get_pixel(uint x, uint y)
 void video_set_pixel(uint x, uint y, uint c)
 {
   ul_t addr = (ul_t)x + (ul_t)screen_width_px*(ul_t)(y+video_window_y);
-  ul_t bank_size = 0x10000L; /* 64KB memory granularity works in 95% computers */
+  ul_t bank_size = VESA_BANK_SIZE;
+  ul_t bank_number = (ul_t)addr/(ul_t)bank_size;
+  ul_t bank_offset = (ul_t)addr%(ul_t)bank_size;
+
+  /* Update cursor pixel buffer */
+  if(cursor_shown &&
+    x>=cursor_buff_x && x<cursor_buff_x+FNT_W-2 &&
+    y==cursor_buff_y) {
+    cursor_buff[x-cursor_buff_x] = c;
+  }
+
+  /* This is very expensive, do only if actually needed */
+  if(bank_number != current_bank) {
+    io_set_vesa_bank(bank_number);
+    current_bank = bank_number;
+  }
+
+  lmem_setbyte(VIDEO_MEM + bank_offset, c); /* Set */
+}
+
+/*
+ * Set pixel, used to draw cursor, since
+ * it does not update cursor pixel buffer
+ */
+static void set_cursor_pixel(uint x, uint y, uint c)
+{
+  ul_t addr = (ul_t)x + (ul_t)screen_width_px*(ul_t)(y+video_window_y);
+  ul_t bank_size = VESA_BANK_SIZE;
   ul_t bank_number = (ul_t)addr/(ul_t)bank_size;
   ul_t bank_offset = (ul_t)addr%(ul_t)bank_size;
 
@@ -100,6 +147,30 @@ void video_set_pixel(uint x, uint y, uint c)
   }
 
   lmem_setbyte(VIDEO_MEM + bank_offset, c); /* Set */
+}
+
+/*
+ * Get pixels from cursor screen area
+ */
+static void update_cursor_buffer()
+{
+  uint i;
+  for(i=0; i<FNT_W-2; i++) {
+    cursor_buff[i] =
+      get_pixel(cursor_buff_x+i, cursor_buff_y, 0);
+  }
+}
+
+/*
+ * Draw pixels in cursor screen area
+ */
+static void draw_cursor_buffer()
+{
+  uint i;
+  for(i=0; i<FNT_W-2; i++) {
+    set_pixel(cursor_buff_x+i, cursor_buff_y,
+      cursor_buff[i]);
+  }
 }
 
 /*
@@ -119,6 +190,8 @@ static uint is_visible_char(uchar c)
 void video_clear_screen()
 {
   uint i, j;
+  uint tcursor_shown = cursor_shown;
+  video_hide_cursor();
   video_window_y = 0; /* Reset window */
 
   /* Repaint full screen */
@@ -133,8 +206,10 @@ void video_clear_screen()
   io_scroll_screen();
 
   /* Reset cursor position */
-  cursor_col = 0;
-  cursor_row = 0;
+  video_set_cursor_pos(0, 0);
+  if(tcursor_shown) {
+    video_show_cursor();
+  }
 }
 
 /*
@@ -186,10 +261,28 @@ void video_draw_char(uint x, uint y, uint c, uint text_cl, uint back_cl)
 }
 
 /*
+ * Draw emulated cursor at given x, y
+ */
+static void draw_cursor(uint x, uint y, uint c)
+{
+  uint i;
+
+  /* Draw bar */
+  for(i=x; i<x+FNT_W-2; i++) {
+    set_cursor_pixel(i, j, c);
+  }
+
+  return;
+}
+
+/*
  * Show terminal emulation cursor
  */
 void video_show_cursor()
 {
+  if(!cursor_shown || !cursor_blink_state) {
+    update_cursor_buffer();
+  }
   cursor_shown = 1;
 }
 
@@ -198,6 +291,9 @@ void video_show_cursor()
  */
 void video_hide_cursor()
 {
+  if(cursor_shown && cursor_blink_state) {
+    draw_cursor_buffer();
+  }
   cursor_shown = 0;
 }
 
@@ -215,8 +311,34 @@ void video_get_cursor_pos(uint* col, uint* row)
  */
 void video_set_cursor_pos(uint col, uint row)
 {
-  cursor_col = col;
-  cursor_row = row;
+  if(col != cursor_col || row != cursor_row) {
+    if(cursor_shown) {
+      draw_cursor_buffer();
+    }
+    cursor_col = col;
+    cursor_row = row;
+    cursor_buff_x = cursor_col * FNT_W + 1;
+    cursor_buff_y = ((cursor_row+1)*video_font_h) - 1;
+    if(cursor_shown) {
+      update_cursor_buffer();
+    }
+  }
+}
+
+/*
+ * Set terminal emulation cursor position, fast
+ */
+static void set_cursor_pos_fast(uint col, uint row)
+{
+  if(col != cursor_col || row != cursor_row) {
+    cursor_col = col;
+    cursor_row = row;
+    cursor_buff_x = cursor_col * FNT_W + 1;
+    cursor_buff_y = ((cursor_row+1)*video_font_h) - 1;
+    if(cursor_shown) {
+      update_cursor_buffer();
+    }
+  }
 }
 
 /*
@@ -224,23 +346,27 @@ void video_set_cursor_pos(uint col, uint row)
  */
 static void update_cursor_after_char(uchar c)
 {
+  uint tc_row = cursor_row;
+  uint tc_col = cursor_col;
+
   /* Special chars, move cursor */
   if(c == '\n') {
-    cursor_row++;
+    tc_row++;
   } else if(c == '\r') {
-    cursor_col = 0;
+    tc_col = 0;
   } else {
-    cursor_col++;
+    tc_col++;
   }
 
   /* If new position exceeds line lenght, go to next line */
-  if(cursor_col > screen_width_c) {
-    cursor_col = 0;
-    cursor_row++;
+  if(tc_col > screen_width_c) {
+    tc_col = 0;
+    tc_row++;
   }
 
-  /* If new positin exceeds screen height, scroll */
-  if(cursor_row > screen_height_c-1) {
+  /* If new position exceeds screen height, scroll */
+  if(tc_row > screen_height_c-1) {
+    uint tcursor_shown = cursor_shown;
     uint i, j;
 
     /* After two full screens, reset window */
@@ -250,7 +376,7 @@ static void update_cursor_after_char(uchar c)
       video_window_y = 0;
       for(j=video_font_h; j<screen_height_px; j++) {
         for(i=0; i<screen_width_px; i++){
-          scline[i] = get_pixel(i, j + v_w_y);
+          scline[i] = get_pixel(i, j + v_w_y, 1);
         }
         for(i=0; i<screen_width_px; i++){
           video_set_pixel(i, j, (uint)scline[i]);
@@ -270,9 +396,12 @@ static void update_cursor_after_char(uchar c)
     io_scroll_screen();
 
     /* Reset cursor */
-    cursor_col = 0;
-    cursor_row = screen_height_c-1;
+    tc_col = 0;
+    tc_row = screen_height_c-1;
+
   }
+
+  set_cursor_pos_fast(tc_col, tc_row);
 }
 
 /*
@@ -289,8 +418,23 @@ void video_out_char(uchar c)
  */
 void video_out_char_attr(uint col, uint row, uchar c, uchar attr)
 {
-  cursor_col = col;
-  cursor_row = row;
+  video_set_cursor_pos(col, row);
   video_draw_char(cursor_col*FNT_W, cursor_row*video_font_h, c, attr&0xF, attr>>4);
   update_cursor_after_char(c);
+}
+
+/*
+ * Blink emulated cursor. Called by timer handler
+ */
+void video_blink_cursor()
+{
+  if(cursor_shown == 1) {
+    cursor_blink_state = 1-cursor_blink_state;
+    if(!cursor_blink_state) {
+      draw_cursor_buffer();
+    } else {
+      draw_cursor(cursor_buff_x, cursor_buff_y, DEF_TEXT);
+    }
+  }
+  cursor_blink_timer = system_timer_ms;
 }

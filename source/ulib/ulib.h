@@ -363,7 +363,10 @@ uint stou(uchar* src);
  */
 uint sisu(uchar* src);
 
-
+/*
+ * Format a string using %x, %d, %u, %U, %s...
+ */
+void formatstr(uchar* str, uint size, uchar* format, ...);
 
 /*
  * Copy size bytes from src to dst
@@ -652,6 +655,11 @@ void wait(uint miliseconds);
  * Convert string to IP
  */
 void str_to_ip(uint8_t* ip, uchar* str);
+
+/*
+ * Convert IP to string
+ */
+uchar* ip_to_str(uchar* str, uint8_t* ip);
 
 /*
  * Send len bytes of buffer to dst_ip

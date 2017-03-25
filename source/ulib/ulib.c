@@ -148,6 +148,18 @@ void format_str_outchar(uchar* format, uint* args, outchar_function outchar)
 }
 
 /*
+ * Format a string
+ */
+static uchar* ststr;
+static void stcatchar(uchar c) { ststr[strlen(ststr)] = c; }
+void formatstr(uchar* str, uint size, uchar* format, ...)
+{
+  ststr = str;
+  memset(ststr, 0, size);
+  format_str_outchar(format, &format+1, stcatchar);
+}
+
+/*
  * Get mouse state
  */
 void get_mouse_state(uint mode, uint* x, uint* y, uint* b)
@@ -920,6 +932,15 @@ void str_to_ip(uint8_t* ip, uchar* str)
    }
    tok = nexttok;
   }
+}
+
+/*
+ * Convert IP to string
+ */
+uchar* ip_to_str(uchar* str, uint8_t* ip)
+{
+  formatstr(str, 16, "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+  return str;
 }
 
 /*

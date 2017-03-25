@@ -320,8 +320,9 @@ uint main(uint argc, uchar* argv[])
     /* Keys to ignore */
     if((k>KEY_F1 && k<=KEY_F10) ||
       k==KEY_F11 || k==KEY_F12 ||
-      k==KEY_PRT_SC || k==KEY_INS) {
-        continue;
+      k==KEY_PRT_SC || k==KEY_INS ||
+      k==0) {
+      continue;
 
     /* Key F1: Save */
     } else if(k == KEY_F1) {

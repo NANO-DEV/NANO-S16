@@ -7,19 +7,12 @@
 #include "pci.h"
 #include "ulib/ulib.h"
 
-#define MAX_PCI_DEVICE 32
+#define PCI_CONFIG_ADDR_PORT 0xCF8
+#define PCI_CONFIG_DATA_PORT 0xCFC
 
+#define MAX_PCI_DEVICE 16
 static uint pci_count = 0;
-struct PCI_DEVICE pci_table[MAX_PCI_DEVICE];
-
-/*
- * Get configuration address base
- */
-static uint32_t pci_dev(uchar bus, uint8_t slot, uint8_t func)
-{
-	return (uint32_t)
-    (((ul_t)bus<<16) | ((ul_t)slot<<11) | ((ul_t)func<<8));
-}
+struct PCI_DEVICE pci_devices[MAX_PCI_DEVICE];
 
 /*
  * Read config
@@ -32,27 +25,6 @@ static uint32_t pci_read_config(uint32_t pci_dev, uint8_t offset)
 }
 
 /*
- * Read config (word)
- */
-static uint16_t pci_read_config_word(uint32_t pci_dev, uint8_t offset)
-{
-	union {
-		uint32_t ret_i;
-		uint16_t ret_s[2];
-	} ret;
-
-	ret.ret_i = pci_read_config(pci_dev, offset);
-
-	if((offset & 3) == 0) {
-		return ret.ret_s[0];
-	} else if((offset & 3) == 2) {
-		return ret.ret_s[1];
-  }
-
-  return 0x77FF;
-}
-
-/*
  * Scan devices in bus 0
  */
 void pci_init()
@@ -60,12 +32,10 @@ void pci_init()
 	uint8_t bus = 0;
 	uint8_t slot;
 	uint8_t func;
-	uint32_t tmp_pci_dev;
-	uint16_t vendor_id;
 	uint i;
 
 	/* Initialize PCI table */
-	memset(pci_table, 0, sizeof(pci_table));
+	memset(pci_devices, 0, sizeof(pci_devices));
 
 	/* Scan bus 0 devices */
   pci_count = 0;
@@ -73,8 +43,10 @@ void pci_init()
 		for(func=0; func<8; func++) {
       uint i;
       uint32_t* p;
-			tmp_pci_dev = pci_dev(bus, slot, func);
-			vendor_id = pci_read_config_word(tmp_pci_dev, 0);
+			uint32_t pci_dev_addr = (uint32_t)
+		    (((ul_t)bus<<16) | ((ul_t)slot<<11) | ((ul_t)func<<8));
+
+			uint16_t vendor_id = pci_read_config(pci_dev_addr, 0)&0xFFFF;
 
 			/* Discard unused */
 			if(vendor_id == 0xFFFF) {
@@ -82,16 +54,15 @@ void pci_init()
       }
 
 			/* Read device */
-			pci_table[pci_count].dev = tmp_pci_dev;
-			p = (uint32_t *)&(pci_table[pci_count].vendor_id);
+			p = (uint32_t *)&pci_devices[pci_count];
 
-			for(i=0; i<64; i+=4) {
-				*p++ = pci_read_config(tmp_pci_dev, i);
+			for(i=0; i<sizeof(struct PCI_DEVICE); i+=4) {
+				*p++ = pci_read_config(pci_dev_addr, i);
 			}
 
 			pci_count++;
 			if(pci_count >= MAX_PCI_DEVICE) {
-				debugstr("There are too many devices, skip\n\r");
+				debugstr("There are unlisted PCI devices\n\r");
 				return;
 			}
 		}
@@ -100,8 +71,8 @@ void pci_init()
 	/* Print debug info */
   debugstr("PCI initialized\n\r");
 	for(i=0; i<pci_count; i++) {
-		debugstr("dev:%X  vendor:%x  device:%x\n", pci_table[i].dev,
-			pci_table[i].vendor_id, pci_table[i].device_id);
+		debugstr("vendor:%x  device:%x\n",
+			pci_devices[i].vendor_id, pci_devices[i].device_id);
 	}
 }
 
@@ -111,13 +82,12 @@ void pci_init()
  */
 struct PCI_DEVICE* pci_find_device(uint16_t vendor, uint16_t device)
 {
-	struct PCI_DEVICE* pci = pci_table;
   uint i;
 	for(i=0; i<pci_count; i++) {
-		if(vendor==pci->vendor_id && device==pci->device_id) {
-			return pci;
+		if(vendor==pci_devices[i].vendor_id &&
+			device==pci_devices[i].device_id) {
+			return &pci_devices[i];
     }
-		pci++;
 	}
 	return 0;
 }
