@@ -624,7 +624,7 @@ uint kernel_service(uint cs, uint service, lp_t lparam)
     case SYSCALL_NET_SEND: {
       struct TSYSCALL_NETOP no;
       uint8_t addr[4];
-      uint8_t buff[4];
+      uint8_t buff[512];
       lmemcpy(lp(&no), lparam, lsizeof(no));
       lmemcpy(lp(addr), no.addr, lsizeof(addr));
       lmemcpy(lp(buff), no.buff, (ul_t)no.size);
