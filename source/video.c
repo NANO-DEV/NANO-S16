@@ -269,7 +269,7 @@ static void draw_cursor(uint x, uint y, uint c)
 
   /* Draw bar */
   for(i=x; i<x+FNT_W-2; i++) {
-    set_cursor_pixel(i, j, c);
+    set_cursor_pixel(i, y, c);
   }
 
   return;

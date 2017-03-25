@@ -41,15 +41,14 @@ An operating system kernel is responsible for managing the system memory. This e
 This operating system enables A20 line (if available) and uses a mixed memory model: one segment for kernel (code, stack and data), one segment for user programs (code and stack) and multiple user programs data segments.
 
 Memory map
-0x00000000-0x000003FF	1KB   - Interrupt Vector Table
-0x00000400-0x000004FF	256B  - BIOS Data Area
-
-0x00007C00-0x00007FFF	1KB   - Boot data
-0x00008000-0x00017FFF	64KB  - Kernel segment (code, stack and data)
-0x00018000-0x00027FFF 64KB  - User programs code and stack segment
-0x00028000-0x0009FC00 490KB - User programs data
-0x0009FC00-0x0009FFFF	1KB   - Extended BIOS Data Area
-0x000A0000-0x000FFFFF 384KB - Video memory, ROM Area
+* 0x00000000-0x000003FF	(1KB)   - Interrupt Vector Table
+* 0x00000400-0x000004FF	(256B)  - BIOS Data Area
+* 0x00007C00-0x00007FFF	(1KB)   - Boot data
+* 0x00008000-0x00017FFF	(64KB)  - Kernel segment (code, stack and data)
+* 0x00018000-0x00027FFF (64KB)  - User programs code and stack segment
+* 0x00028000-0x0009FC00 (490KB) - User programs data
+* 0x0009FC00-0x0009FFFF	(1KB)   - Extended BIOS Data Area
+* 0x000A0000-0x000FFFFF (384KB) - Video memory, ROM Area
 
 Inside the kernel mapping area there is a dedicated buffer for performing disk operations, and another for kernel heap memory allocation.
 
@@ -61,8 +60,8 @@ With an appropriate device driver, the kernel can then access the contents of th
 This operating system supports hard disks and removable disks, and implements a custom file system (NSFS). The NSFS file system is simple, offers good performance and allows light-weight implementations.
 
 NSFS divides disk space into logical blocks of contiguous space, following this layout:
-[boot block | super block | entries table | data blocks]
 
+[boot block | super block | entries table | data blocks]
 * Boot block (block 0): Boot sector
 * Super block (block 1): Contains information about the layout of the file system
 * Entries table (blocks 2-n): Table of file and directory entries

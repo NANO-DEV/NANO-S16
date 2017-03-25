@@ -7,7 +7,7 @@
 
 #define OS_VERSION_HI 2
 #define OS_VERSION_LO 0
-#define OS_BUILD_NUM 16
+#define OS_BUILD_NUM 17
 
 /*
  * Hardware related disk information is handled by the kernel module.
