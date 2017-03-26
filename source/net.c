@@ -575,8 +575,18 @@ uint provide_mac_address(uint8_t* ip)
 uint udp_send(uint8_t* dst_ip, uint src_port, uint dst_port,
   uint8_t protocol, uint8_t* data, uint len)
 {
+	struct UDPIPhdr {
+		uint8_t  sender[4];
+		uint8_t  recver[4];
+		uint8_t  zero;
+		uint8_t  protocol;
+		uint16_t len;
+	};
+
   uint head_len = sizeof(struct UDPhdr);
-  struct UDPhdr* uh = &snd_buff[12];
+	uint iphead_len = sizeof(struct UDPIPhdr);
+	struct UDPIPhdr* ih = snd_buff;
+  struct UDPhdr* uh = &snd_buff[iphead_len];
   uint checksum = 0;
 
   /* Provide hw addresss before process */
@@ -586,20 +596,25 @@ uint udp_send(uint8_t* dst_ip, uint src_port, uint dst_port,
     return 1;
   }
 
+	/* Clamp len */
+	len = min(sizeof(snd_buff) - iphead_len-head_len -
+		sizeof(struct IPhdr) - sizeof(struct ethhdr),
+		len);
+
   /* Generate UDP packet and send */
 	memset(snd_buff, 0, sizeof(snd_buff));
-  memcpy(&(snd_buff[12+head_len]), data, len);
+  memcpy(&(snd_buff[iphead_len+head_len]), data, len);
 
   uh->srcPort = bswap_16(src_port);
   uh->dstPort = bswap_16(dst_port);
   uh->len = bswap_16(len+head_len);
 
-	memcpy(&snd_buff[0], local_ip, sizeof(local_ip));
-	memcpy(&snd_buff[4], dst_ip, sizeof(local_ip));
-	snd_buff[8] = 0;
-	snd_buff[9] = IP_PROTOCOL_UDP;
-	memcpy(&snd_buff[10], &uh->len, sizeof(uh->len));
-  checksum = net_checksum(snd_buff, 12+len+head_len);
+	memcpy(ih->sender, local_ip, sizeof(ih->sender));
+	memcpy(ih->recver, dst_ip, sizeof(ih->recver));
+	ih->zero = 0;
+	ih->protocol = IP_PROTOCOL_UDP;
+	ih->len = uh->len;
+  checksum = net_checksum(snd_buff, iphead_len+len+head_len);
   uh->checksum = bswap_16(checksum);
   return ip_send(dst_ip, IP_PROTOCOL_UDP, uh, head_len+len);
 }
@@ -719,7 +734,7 @@ void ne2k_receive()
   	outb(0x12, base + NE2K_CR); /* Read and start */
 
     for(i=0; i<4; i++) {
-  	  ((uchar*)&info)[i] = inb(base + NE2K_DATA);
+  	  ((uint8_t*)&info)[i] = inb(base + NE2K_DATA);
     }
 
 		/* Get the data */

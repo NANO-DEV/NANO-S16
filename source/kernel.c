@@ -1277,7 +1277,7 @@ static void execute(uchar* str)
       io_clear_screen();
       io_hide_cursor();
       putstr("Turn off computer\n\r");
-      return; /* Go to halt() */
+      halt(); /* Halt() */
     } else if(argc == 2 && strcmp(argv[1], "reboot") == 0) {
         reboot();  /* Reboot computer */
         putstr("Reboot not supported\n\r");
