@@ -256,11 +256,10 @@ uint8_t snd_buff[256];
 
 
 /* Keep checksum 16-bits */
-uint16_t net_checksum_final(uint sum)
+uint16_t net_checksum_final(uint32_t sum)
 {
   uint16_t temp;
-  sum = (sum&0xFFFF) + (sum>>16);
-  sum += (sum>>16);
+  sum = (sum&0xFFFFL) + (sum>>16);
 
   temp = ~sum;
   return ((temp&0x00FF)<<8) | ((temp&0xFF00)>>8);
@@ -381,8 +380,8 @@ uint32_t xor32(uint32_t a, uint32_t b)
 uint32_t crc32_byte(uint8_t* p, uint32_t bytelength)
 {
 	uint32_t crc = 0xFFFFFFFFL;
-	while (bytelength-- !=0) {
-    crc = xor32(poly8_lookup[((uint8_t)crc^*(p++))], (crc>>8));
+	while(bytelength-- !=0) {
+    crc = xor32(poly8_lookup[((uint8_t)(crc&0xFF)^(*(p++)))], (crc>>8));
   }
 	return (~crc);
 }
@@ -503,20 +502,21 @@ uint ip_send(uint8_t* dst_ip, uint8_t protocol, uint8_t* data, uint len)
   uint checksum = 0;
   uint8_t* dst_mac = 0;
   uint i = 0;
+	static uint id = 0;
 
   memcpy(&(data[head_len]), data, len);
   ih->verIhl = (4<<4) | 5;
   ih->tos = 0;
   ih->len = bswap_16(len+head_len);
-  ih->id = bswap_16(0);
+  ih->id = bswap_16(++id);
   ih->offset = bswap_16(0);
-  ih->ttl = 64;
+  ih->ttl = 128;
   ih->protocol = protocol;
   ih->checksum = 0;
   memcpy(ih->src, local_ip, sizeof(ih->src));
   memcpy(ih->dst, dst_ip, sizeof(ih->dst));
 
-  checksum = net_checksum(data, len+head_len);
+  checksum = net_checksum(data, head_len);
   ih->checksum = bswap_16(checksum);
 
   /* Try to find hw address in table */
@@ -576,7 +576,7 @@ uint udp_send(uint8_t* dst_ip, uint src_port, uint dst_port,
   uint8_t protocol, uint8_t* data, uint len)
 {
   uint head_len = sizeof(struct UDPhdr);
-  struct UDPhdr* uh = snd_buff;
+  struct UDPhdr* uh = &snd_buff[12];
   uint checksum = 0;
 
   /* Provide hw addresss before process */
@@ -587,12 +587,19 @@ uint udp_send(uint8_t* dst_ip, uint src_port, uint dst_port,
   }
 
   /* Generate UDP packet and send */
-  memcpy(&(snd_buff[head_len]), data, len);
+	memset(snd_buff, 0, sizeof(snd_buff));
+  memcpy(&(snd_buff[12+head_len]), data, len);
+
   uh->srcPort = bswap_16(src_port);
   uh->dstPort = bswap_16(dst_port);
   uh->len = bswap_16(len+head_len);
 
-  checksum = net_checksum(uh, len+head_len);
+	memcpy(&snd_buff[0], local_ip, sizeof(local_ip));
+	memcpy(&snd_buff[4], dst_ip, sizeof(local_ip));
+	snd_buff[8] = 0;
+	snd_buff[9] = IP_PROTOCOL_UDP;
+	memcpy(&snd_buff[10], &uh->len, sizeof(uh->len));
+  checksum = net_checksum(snd_buff, 12+len+head_len);
   uh->checksum = bswap_16(checksum);
   return ip_send(dst_ip, IP_PROTOCOL_UDP, uh, head_len+len);
 }
