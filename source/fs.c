@@ -319,11 +319,11 @@ uint fs_get_info(uint disk_index, struct FS_INFO* info)
 
   /* If found, fill info */
   if(j != 0xFFFF) {
-    info->id = index_to_disk(i);
+    info->id = index_to_disk(j);
     strcpy_s(info->name, disk_to_string(info->id), sizeof(info->name));
-    info->fs_type = disk_info[i].fstype;
-    info->fs_size = blocks_to_MB(disk_info[i].fssize);
-    info->disk_size = disk_info[i].size;
+    info->fs_type = disk_info[j].fstype;
+    info->fs_size = blocks_to_MB(disk_info[j].fssize);
+    info->disk_size = disk_info[j].size;
   }
 
   return n;
@@ -580,7 +580,7 @@ uint fs_read_file(uchar* buff, uchar* path, uint offset, uint count)
 
       /* Read in buffer */
       result = read_disk(disk, (uint)entry.ref[block % SFS_ENTRYREFS], offset,
-        min(BLOCK_SIZE-offset, count-read), &(buff[read]), disk);
+        min(BLOCK_SIZE-offset, count-read), &(buff[read]));
 
       if(result != 0) {
         return ERROR_IO;
