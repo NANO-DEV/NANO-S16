@@ -87,8 +87,9 @@ static lp_t next_line(uint mode, uint row, lp_t line)
    */
   while(line && getlc(line) && getlc(line)!='\n' && col<SCREEN_WIDTH) {
     if(mode == SHOW_CURRENT) {
-      editor_putchar(col++, row, getlc(line));
+      editor_putchar(col, row, getlc(line));
     }
+    col++;
     line++;
   }
 
@@ -162,10 +163,13 @@ void buffer_offset_to_linecol(lp_t buff, ul_t offset, uint* col, uint* line)
 ul_t linecol_to_buffer_offset(lp_t buff, uint col, uint line)
 {
   ul_t offset = 0;
+  uint c = 0;
   while(getlc(buff) && line>0) {
-    if(getlc(buff) == '\n') {
+    if(getlc(buff) == '\n' || c>=SCREEN_WIDTH) {
       line--;
+      c=0;
     }
+    c++;
     offset++;
     buff++;
   }
@@ -180,6 +184,26 @@ ul_t linecol_to_buffer_offset(lp_t buff, uint col, uint line)
   }
 
   return offset;
+}
+
+/*
+ * Convert linear buffer offset (uint offset)
+ * to file line
+ * Only function which is not screen space
+ */
+uint buffer_offset_to_fileline(lp_t buff, uint offset)
+{
+  uint line = 0;
+
+  for(; offset>0 && getlc(buff); offset--, buff++) {
+
+    if(getlc(buff) == '\n') {
+      line++;
+    }
+
+  }
+
+  return line;
 }
 
 /*
@@ -432,7 +456,7 @@ uint main(uint argc, uchar* argv[])
 
     /* Update line number in title */
     /* Compute bcd value (reversed) */
-    ibcdt = min(9999, line+1);
+    ibcdt = min(9999, buffer_offset_to_fileline(buff, buff_cursor_offset)+1);
     n = SCREEN_WIDTH-strlen(title_info)+2;
     for(i=0; i<4; i++) {
       line_ibcd[i] = ibcdt%10;

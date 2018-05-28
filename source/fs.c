@@ -146,7 +146,7 @@ static uint read_disk(uint disk, uint block, uint offset, uint buff_size, uchar*
   if(BLOCK_SIZE >= SECTOR_SIZE) {
     sector = block * (BLOCK_SIZE / SECTOR_SIZE);
   } else {
-    sector = block * (SECTOR_SIZE / BLOCK_SIZE);
+    sector = (block * BLOCK_SIZE) / SECTOR_SIZE;
   }
 
   /* Compute initial sector and offset */
@@ -232,7 +232,7 @@ static uint write_disk(uint disk, uint block, uint offset, uint buff_size, uchar
   if(BLOCK_SIZE >= SECTOR_SIZE) {
     sector = block * (BLOCK_SIZE / SECTOR_SIZE);
   } else {
-    sector = block * (SECTOR_SIZE / BLOCK_SIZE);
+    sector = (block * BLOCK_SIZE) / SECTOR_SIZE;
   }
 
   /* Compute initial sector and offset */
@@ -580,13 +580,13 @@ uint fs_read_file(uchar* buff, uchar* path, uint offset, uint count)
 
       /* Read in buffer */
       result = read_disk(disk, (uint)entry.ref[block % SFS_ENTRYREFS], offset,
-        min(BLOCK_SIZE-offset, count-read), &(buff[read]));
+        (uint)min(BLOCK_SIZE-offset, count-read), &(buff[read]));
 
       if(result != 0) {
         return ERROR_IO;
       }
 
-      read += min(BLOCK_SIZE - offset, count);
+      read += min(BLOCK_SIZE - offset, count-read);
       block++;
       offset = 0;
     }
@@ -1086,7 +1086,7 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
     uint ntentry;
 
     /* Set reference count and size in the chain */
-    result = set_entry_refcount(disk, nentry, needed_blocks(offset + count));
+    result = set_entry_refcount(disk, nentry, final_block);
     if(result >= ERROR_ANY) {
       return result;
     }
@@ -1132,7 +1132,8 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
 
   /* Resize: shrink if needed */
   if(entry.size > offset + count && (flags & WF_TRUNCATE)) {
-    result = set_entry_refcount(disk, nentry, needed_blocks(offset + count));
+    uint nblocks = needed_blocks(offset + count);
+    result = set_entry_refcount(disk, nentry);
     if(result >= ERROR_ANY) {
       return result;
     }
@@ -1159,6 +1160,7 @@ uint fs_write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags
       offset -= SFS_ENTRYREFS*BLOCK_SIZE;
       current_block -= SFS_ENTRYREFS;
     }
+
     result = write_disk(disk, (uint)entry.ref[current_block],
       offset%BLOCK_SIZE, to_copy, &buff[written]);
     if(result != 0) {

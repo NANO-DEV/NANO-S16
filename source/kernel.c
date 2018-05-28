@@ -526,7 +526,7 @@ uint kernel_service(uint cs, uint service, lp_t lparam)
         uchar tbuff[BLOCK_SIZE];
         uint write;
         uint count = min(sizeof(tbuff), fi.count-offset);
-        lmemcpy(lp(tbuff), fi.buff+(lp_t)fi.offset+(lp_t)offset, (ul_t)count);
+        lmemcpy(lp(tbuff), fi.buff+(lp_t)offset, (ul_t)count);
 
         write = fs_write_file(tbuff, path, fi.offset+offset, count, fi.flags);
         if(write >= ERROR_ANY) {
@@ -862,7 +862,7 @@ void kernel()
     if(result == 0) {
       disk_info[i].size = ((ul_t)disk_info[i].sectors *
         (ul_t)disk_info[i].sides * (ul_t)disk_info[i].cylinders) /
-        (1048576L / (ul_t)BLOCK_SIZE);
+        (1048576L / (ul_t)SECTOR_SIZE);
 
       disk_info[i].last_access = system_timer_ms;
 
