@@ -950,14 +950,18 @@ _apm_shutdown:
   mov  ax, 0x5301
   mov  bx, 0
   int  0x15
-  jc   .error
+
+  ; Set APM version
+  mov  ax, 0x530E
+  mov  bx, 0
+  mov  cx, 0x0101
+  int  0x15
 
   ; Enable power management
-  mov  ax, 0x5308
+  mov  ax, 0x530D
   mov  bx, 0x0001
   mov  cx, 0x0001
   int  0x15
-  jc   .error
 
   ; Power off
   mov  ax, 0x5307
