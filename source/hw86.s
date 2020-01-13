@@ -819,15 +819,15 @@ _outb:
   push bx
   push dx
 
-	mov	 bx, sp
-	mov	 ax, [bx+8]
-	mov	 dx, [bx+10]
-	out	 dx, al
+  mov  bx, sp
+  mov  ax, [bx+8]
+  mov  dx, [bx+10]
+  out  dx, al
 
   pop  dx
   pop  bx
   pop  ax
-	ret
+  ret
 
 
 ;
@@ -840,11 +840,11 @@ _inb:
   push dx
 
   mov  ah, 0
-  mov	 bx, sp
-	mov	 dx, [bx+6]
-	in	 al, dx
+  mov  bx, sp
+  mov  dx, [bx+6]
+  in   al, dx
 
-	pop  dx
+  pop  dx
   pop  bx
   ret
 
@@ -859,15 +859,15 @@ _outw:
   push bx
   push dx
 
-	mov	 bx, sp
-	mov	 ax, [bx+8]
-	mov	 dx, [bx+10]
-	out	 dx, ax
+  mov  bx, sp
+  mov  ax, [bx+8]
+  mov  dx, [bx+10]
+  out  dx, ax
 
   pop  dx
   pop  bx
   pop  ax
-	ret
+  ret
 
 
 ;
@@ -880,11 +880,11 @@ _inw:
   push dx
 
   mov  ax, 0
-  mov	 bx, sp
-	mov	 dx, [bx+6]
-	in	 ax, dx
+  mov  bx, sp
+  mov  dx, [bx+6]
+  in   ax, dx
 
-	pop  dx
+  pop  dx
   pop  bx
   ret
 
@@ -899,15 +899,15 @@ _outl:
   push bx
   push dx
 
-	mov	 bx, sp
-	mov	 eax, [bx+10]
-	mov	 dx, [bx+14]
-	out	 dx, eax
+  mov  bx, sp
+  mov  eax, [bx+10]
+  mov  dx, [bx+14]
+  out  dx, eax
 
   pop  dx
   pop  bx
   pop  eax
-	ret
+  ret
 
 
 ;
@@ -919,9 +919,9 @@ _inl:
   push bx
 
   mov  eax, 0
-  mov	 bx, sp
-	mov	 dx, [bx+4]
-	in	 eax, dx
+  mov  bx, sp
+  mov  dx, [bx+4]
+  in   eax, dx
   mov  edx, eax
   shr  edx, 16
 
@@ -931,7 +931,7 @@ _inl:
 
 ;
 ; void apm_shutdown()
-;	Power off system using APM
+; Power off system using APM
 ;
 global _apm_shutdown
 _apm_shutdown:
@@ -979,7 +979,7 @@ _apm_shutdown:
 
 ;
 ; void reboot()
-;	Reboot system
+; Reboot system
 ;
 global _reboot
 _reboot:
@@ -1315,7 +1315,7 @@ IRQ0_handler:
   pushad
   call _enter_kernel
 
-	mov  eax, [IRQ0_fractions]
+  mov  eax, [IRQ0_fractions]
   mov  ebx, [IRQ0_ms]                ; eax.ebx = amount of time between IRQs
   add  [system_timer_fractions], eax ; Update system timer tick fractions
   adc  [_system_timer_ms], ebx       ; Update system timer tick milli-seconds
@@ -1327,7 +1327,7 @@ IRQ0_handler:
 
   call _leave_kernel
   popad
-	iret
+  iret
 
   extern _kernel_time_tick
 
@@ -1338,7 +1338,7 @@ IRQ0_handler:
 ;
 IRQ12_handler:
   pushad
-	call _enter_kernel
+  call _enter_kernel
 
   call _mouse_handler
 
@@ -1348,7 +1348,7 @@ IRQ12_handler:
 
   call _leave_kernel
   popad
-	iret
+  iret
 
 extern _mouse_handler
 
@@ -1359,7 +1359,7 @@ extern _mouse_handler
 ;
 IRQNET_handler:
   pushad
-	call _enter_kernel
+  call _enter_kernel
 
   call _net_handler
 
@@ -1369,7 +1369,7 @@ IRQNET_handler:
 
   call _leave_kernel
   popad
-	iret
+  iret
 
 extern _net_handler
 
@@ -1385,17 +1385,17 @@ PORT_SPIC_DATA equ 0xA1
 
 PIC_EOI equ 0x20 ; End-of-interrupt command code
 
-ICW1_ICW4	equ 0x01		; ICW4 (not) needed
-ICW1_SINGLE	equ 0x02		; Single (cascade) mode
-ICW1_INTERVAL4 equ 0x04		; Call address interval 4 (8)
-ICW1_LEVEL equ 0x08		; Level triggered (edge) mode
-ICW1_INIT equ 0x10		; Initialization - required!
+ICW1_ICW4 equ 0x01       ; ICW4 (not) needed
+ICW1_SINGLE equ 0x02     ; Single (cascade) mode
+ICW1_INTERVAL4 equ 0x04  ; Call address interval 4 (8)
+ICW1_LEVEL equ 0x08      ; Level triggered (edge) mode
+ICW1_INIT equ 0x10       ; Initialization - required!
 
-ICW4_8086 equ 0x01		; 8086/88 (MCS-80/85) mode
-ICW4_AUTO equ 0x02		; Auto (normal) EOI
-ICW4_BUF_SLAVE equ 0x08		; Buffered mode/slave
-ICW4_BUF_MASTER equ 0x0C		; Buffered mode/master
-ICW4_SFNM equ 0x10		; Special fully nested (not)
+ICW4_8086 equ 0x01       ; 8086/88 (MCS-80/85) mode
+ICW4_AUTO equ 0x02       ; Auto (normal) EOI
+ICW4_BUF_SLAVE equ 0x08  ; Buffered mode/slave
+ICW4_BUF_MASTER equ 0x0C ; Buffered mode/master
+ICW4_SFNM equ 0x10       ; Special fully nested (not)
 
 INT_CODE_MPIC_BASE equ 0x08
 INT_CODE_SPIC_BASE equ 0x70
@@ -1414,28 +1414,28 @@ _PIC_init:
   ; Starts the initialization sequence (in cascade mode)
   mov  al, ICW1_INIT+ICW1_ICW4
   out  PORT_MPIC_COMMAND, al ; outb(PIC1_COMMAND, ICW1_INIT+ICW1_ICW4);
-	out  PORT_SPIC_COMMAND, al ; outb(PIC2_COMMAND, ICW1_INIT+ICW1_ICW4);
+  out  PORT_SPIC_COMMAND, al ; outb(PIC2_COMMAND, ICW1_INIT+ICW1_ICW4);
 
   ; PIC vector offsets
   mov  al, 0x08
-	out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, offset1);
+  out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, offset1);
   mov  al, 0x70
-	out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, offset2);
+  out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, offset2);
 
 
   ; ICW3: tell Master PIC that there is a slave PIC at IRQ2 (0000 0100)
   mov  al, 4
-	out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, 4);
+  out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, 4);
   ; ICW3: tell Slave PIC its cascade identity (0000 0010)
   mov  al, 2
-	out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, 2);
+  out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, 2);
 
   mov  al, ICW4_8086
-	out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, ICW4_8086);
-	out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, ICW4_8086);
+  out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, ICW4_8086);
+  out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, ICW4_8086);
 
   ; Restore masks
-	pop  ax
+  pop  ax
   out  PORT_SPIC_DATA, al ; outb(PIC2_DATA, a2);
   pop  ax
   out  PORT_MPIC_DATA, al ; outb(PIC1_DATA, a1);

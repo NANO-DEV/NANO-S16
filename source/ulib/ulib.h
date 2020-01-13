@@ -494,29 +494,29 @@ void lmfree(lp_t ptr);
 #define ERROR_NO_SPACE  0xFFFC
 #define ERROR_ANY       0xFFFB
 
-/* FS_ENTRY flags */
+/* fs_entry_t flags */
 #define FST_DIR  0x01   /* Directory */
 #define FST_FILE 0x02   /* File */
 
-struct  FS_ENTRY {
+typedef struct {
   uchar name[15];
   uchar flags;
   uint  size; /* bytes for files, items for directories */
-};
+} fs_entry_t;
 
 #define MAX_PATH 72
 
-/* FS_INFO.fs_type types */
+/* fs_info_t.fs_type types */
 #define FS_TYPE_UNKNOWN 0x000
 #define FS_TYPE_NSFS    0x001
 
-struct FS_INFO {
+ typedef struct {
   uchar name[4];
   uint  id;        /* Disk id code */
   uint  fs_type;
   ul_t  fs_size;   /* MB */
   ul_t  disk_size; /* MB */
-};
+} fs_info_t;
 
 /*
  * Get filesystem info
@@ -525,7 +525,7 @@ struct FS_INFO {
  * available disks list.
  * returns number of available disks
  */
-uint get_fsinfo(uint disk_index, struct FS_INFO* info);
+uint get_fsinfo(uint disk_index, fs_info_t* info);
 
 /*
  * Get filesystem entry
@@ -538,7 +538,7 @@ uint get_fsinfo(uint disk_index, struct FS_INFO* info);
  * Returns ERROR_NOT_FOUND if error, entry index otherwise
  */
  #define UNKNOWN_VALUE 0xFFFF
-uint get_entry(struct FS_ENTRY* entry, uchar* path, uint parent, uint disk);
+uint get_entry(fs_entry_t* entry, uchar* path, uint parent, uint disk);
 
 /*
  * Read file
@@ -608,7 +608,7 @@ uint create_directory(uchar* path);
  * - ERROR_NOT_FOUND if path does not exist
  * - number of elements in ths directory otherwise
  */
-uint list(struct FS_ENTRY* entry, uchar* path, uint n);
+uint list(fs_entry_t* entry, uchar* path, uint n);
 
 /*
  * Create filesystem in disk
@@ -622,16 +622,16 @@ uint format(uint disk);
 /*
  * Get current system date and time
  */
-struct TIME {
+typedef struct {
   uint  year;
   uint  month;
   uint  day;
   uint  hour;
   uint  minute;
   uint  second;
- };
+ } time_t;
 
-void time(struct TIME* t);
+void time(struct time_t* t);
 
 /*
  * Get system alive time in miliseconds

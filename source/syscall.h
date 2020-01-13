@@ -53,64 +53,64 @@
  * -Raw pointer
  *
  * When a service requires more than one parameter,
- * these are packed in a TSYSCALL_ struct
+ * these are packed in a syscall_ struct
  * and this struct is passed as the raw pointer param
  */
 
-struct TSYSCALL_FSINFO {
+typedef struct {
   uint               disk_index;
-  lp_t               info; /* FS_INFO */
-};
+  lp_t               info; /* fs_info_t */
+} syscall_fsinfo_t;
 
-struct TSYSCALL_FSENTRY {
-  lp_t               entry; /* FS_ENTRY */
+typedef struct {
+  lp_t               entry; /* fs_entry_t */
   lp_t               path; /* str */
   uint               parent;
   uint               disk;
-};
+} syscall_fsentry_t;
 
-struct TSYSCALL_FSRWFILE {
+typedef struct {
   lp_t               buff; /* byte[] */
   lp_t               path; /* str */
   uint               offset;
   uint               count;
   uint               flags;
-};
+} syscall_fsrwfile_t;
 
-struct TSYSCALL_FSSRCDST {
+typedef struct {
   lp_t               src; /* str */
   lp_t               dst; /* str */
-};
+} syscall_fssrcdst_t;
 
-struct TSYSCALL_FSLIST {
-  lp_t               entry; /* FS_ENTRY */
+typedef struct {
+  lp_t               entry; /* fs_entry_t */
   lp_t               path; /* str */
   uint               n;
-};
+} syscall_fslist_t;
 
-struct TSYSCALL_POSATTR {
+typedef struct {
   uint               x;
   uint               y;
   uint               c;
   uint               attr;
-};
+} syscall_posattr_t;
 
-struct TSYSCALL_POSITION {
+typedef struct {
   uint               x;
   uint               y;
   lp_t               px; /* uint */
   lp_t               py; /* uint */
-};
+} syscall_position_t;
 
-struct TSYSCALL_LMEM {
+typedef struct {
   lp_t               dst;
   ul_t               n;
-};
+} syscall_lmem_t;
 
-struct TSYSCALL_NETOP {
+typedef struct {
   lp_t               addr; /* uint8_t[4] */
   lp_t               buff; /* byte[] */
   uint               size;
-};
+} syscall_netop_t;
 
 #endif   /* _SYSCALL_H */

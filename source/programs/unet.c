@@ -68,7 +68,7 @@ uint main(uint argc, uchar* argv[])
 
     /* Main loop */
     while(1) {
-      uint k;
+      uint k = 0;
       uchar recv_buff[256];
       uint8_t recv_ip[4];
 

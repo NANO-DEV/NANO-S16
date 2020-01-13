@@ -7,7 +7,7 @@
 
 #define OS_VERSION_HI 2
 #define OS_VERSION_LO 0
-#define OS_BUILD_NUM 23
+#define OS_BUILD_NUM 24
 
 /*
  * Hardware related disk information is handled by the kernel module.
@@ -22,7 +22,7 @@
  * to avoid DMA error */
 extern uchar disk_buff[SECTOR_SIZE];
 
-struct DISKINFO {
+struct diskinfo {
     uint  id;          /* Disk id */
     uchar name[4];     /* Disk name */
     uint  fstype;      /* File system type: see ulib.h */

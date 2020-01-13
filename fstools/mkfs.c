@@ -27,7 +27,7 @@ typedef unsigned int uint32_t;
 #define max(a,b) (a>b?a:b)
 
 // Output file descriptor
-int fsfd;
+int fsfd = 0;
 
 // Write and read blocks
 void wblock(uint, void*);
@@ -36,17 +36,17 @@ void rblock(uint sec, void *buf);
 // Entry point
 int main(int argc, char *argv[])
 {
-  int i, f, e, b, cc, fd;
-  char* name;
+  int i=0, f=0, e=0, b=0, cc=0, fd=0;
+  char* name = NULL;
   char buf[BLOCK_SIZE];
-  struct SFS_SUPERBLOCK sfs_sb;
-  struct SFS_ENTRY* sfs_entry;
+  sfs_superblock_t sfs_sb;
+  sfs_entry_t* sfs_entry = NULL;
 
   // Check architecture and fs definition sizes
   assert(sizeof(uint8_t)  == 1);
   assert(sizeof(uint32_t) == 4);
-  assert(BLOCK_SIZE % sizeof(struct SFS_ENTRY) == 0 ||
-         sizeof(struct SFS_ENTRY) % BLOCK_SIZE == 0);
+  assert(BLOCK_SIZE % sizeof(sfs_entry_t) == 0 ||
+         sizeof(sfs_entry_t) % BLOCK_SIZE == 0);
 
   // Check usage
   if(argc < 5) {
@@ -59,8 +59,8 @@ int main(int argc, char *argv[])
 
   // Get fs parameters
   int fssize_blocks = atoi(argv[2]);  // Size of file system in blocks
-  int numentries = min(((fssize_blocks * BLOCK_SIZE)/10)/sizeof(struct SFS_ENTRY), 4096);
-  int entries_size = numentries * sizeof(struct SFS_ENTRY);
+  int numentries = min(((fssize_blocks * BLOCK_SIZE)/10)/sizeof(sfs_entry_t), 4096);
+  int entries_size = numentries * sizeof(sfs_entry_t);
 
   // Open output file
   fsfd = open(argv[1], O_RDWR|O_CREAT|O_TRUNC, 0666);

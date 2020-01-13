@@ -51,7 +51,7 @@ enum R_DEF {
 };
 
 /* CONST Registers data */
-struct RDATA {
+struct rdata {
   uchar name[5];
   uchar type;
   uchar encoding;
@@ -129,7 +129,7 @@ enum I_DEF {
 
 /* CONST Instructions data */
 #define I_MAX_OPS 3 /* Max instruction operands */
-struct IDATA {
+struct idata {
   uchar mnemonic[6];
   uchar opcode;
   uchar nops;     /* Number of operands */
@@ -200,7 +200,7 @@ struct s_ref {
   uchar  symbol;
   uchar  operand;
   uchar  instr_id;
-  struct IDATA instruction;
+  struct idata instruction;
 } s_ref[S_MAX_REF];
 
 /*
@@ -569,7 +569,7 @@ uint find_symbol(uchar* name)
  * Append a symbol reference to symbol references table
  */
 void append_symbol_ref(uchar symbol, uchar operand, uint offset,
-  uchar instr_id, struct IDATA* instruction)
+  uchar instr_id, struct idata* instruction)
 {
   uint r = 0;
   for(r=0; r<S_MAX_REF; r++) {
@@ -592,9 +592,9 @@ void append_symbol_ref(uchar symbol, uchar operand, uint offset,
 /*
  * Find matching instruction and return id
  */
-uchar find_instruction(struct IDATA* ci)
+uchar find_instruction(struct idata* ci)
 {
-  uchar i, id;
+  uchar i=0, id=0;
 
   for(id=0; id<I_COUNT; id++) {
     /* Check same name and number of args */
@@ -635,7 +635,7 @@ uchar find_instruction(struct IDATA* ci)
  */
 uint main(uint argc, uchar* argv[])
 {
-  uint i, j;
+  uint i=0, j=0;
   uchar ofile[14];
 
   /* Input file buffer and offset */
@@ -673,7 +673,7 @@ uint main(uint argc, uchar* argv[])
 
   /* Process input file line by line */
   while((foffset=read_line(fbuff, sizeof(fbuff), argv[1], foffset))!=EOF) {
-    uint   tokc;
+    uint   tokc = 0;
     uchar* tokv[32];
 
     /* Exit on read error */
@@ -704,7 +704,7 @@ uint main(uint argc, uchar* argv[])
 
     /* Check memory addresses */
     else if(tokc>=3 && !strcmp(tokv[1], "dw")) {
-      uint n;
+      uint n = 0;
       j = find_or_add_symbol(tokv[0]);
       s_table[j].value = ooffset;
       s_table[j].type = S_DATAW;
@@ -716,7 +716,7 @@ uint main(uint argc, uchar* argv[])
       debugstr("\n\r");
     }
     else if(tokc>=3 && !strcmp(tokv[1], "db")) {
-      uint n;
+      uint n = 0;
       j = find_or_add_symbol(tokv[0]);
       s_table[j].value = ooffset;
       s_table[j].type = S_DATAB;
@@ -731,8 +731,8 @@ uint main(uint argc, uchar* argv[])
     /* Check instructions */
     else if(tokc) {
       uint   s=0xFFFF, nas=0xFFFF;
-      uchar  instr_id;
-      struct IDATA ci;
+      uchar  instr_id = 0;
+      struct idata ci;
 
       /* Get instruction info */
       strcpy_s(ci.mnemonic, tokv[0], sizeof(ci.mnemonic));
@@ -821,7 +821,7 @@ uint main(uint argc, uchar* argv[])
 
   /* Symbol table is filled, resolve references */
   if(ooffset != 0) {
-    uint r;
+    uint r = 0;
     for(r=0; r<S_MAX_REF; r++) {
 
       /* No more symbols: break */

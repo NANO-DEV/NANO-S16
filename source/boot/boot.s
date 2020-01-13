@@ -144,7 +144,7 @@ print_string:           ; Output string in SI to screen
 .repeat:
   lodsb                 ; Get char from string
   cmp  al, 0
-  je   .done					  ; If char is zero, end of string
+  je   .done            ; If char is zero, end of string
   int  0x10             ; Otherwise, print it
   jmp  short .repeat
 

@@ -164,7 +164,7 @@ void formatstr(uchar* str, uint size, uchar* format, ...)
  */
 void get_mouse_state(uint mode, uint* x, uint* y, uint* b)
 {
-  struct TSYSCALL_POSATTR pa;
+  syscall_posattr_t pa;
   pa.attr = mode;
   syscall(SYSCALL_IO_GET_MOUSE_STATE, lp(&pa));
   *x = pa.x;
@@ -233,7 +233,7 @@ void set_video_mode(uint mode)
  */
 void get_screen_size(uint mode, uint* width, uint* height)
 {
-  struct TSYSCALL_POSITION ps;
+  syscall_position_t ps;
   ps.x = mode;
   ps.y = 0;
   ps.px = lp(width);
@@ -254,7 +254,7 @@ void clear_screen()
  */
 void set_pixel(uint x, uint y, uint color)
 {
-  struct TSYSCALL_POSATTR ca;
+  syscall_posattr_t ca;
   ca.x = x;
   ca.y = y;
   ca.c = color;
@@ -267,7 +267,7 @@ void set_pixel(uint x, uint y, uint color)
  */
 void draw_char(uint x, uint y, uint c, uint color)
 {
-  struct TSYSCALL_POSATTR ca;
+  syscall_posattr_t ca;
   ca.x = x;
   ca.y = y;
   ca.c = c;
@@ -280,8 +280,8 @@ void draw_char(uint x, uint y, uint c, uint color)
  */
 void draw_map(uint x, uint y, uchar* buff, uint width, uint height)
 {
-  struct TSYSCALL_POSATTR ca;
-  uint i, j;
+  syscall_posattr_t ca;
+  uint i=0, j=0;
   for(j=0; j<height; j++) {
     for(i=0; i<width; i++) {
       ca.x = x+i;
@@ -314,7 +314,7 @@ void putstr(uchar* format, ...)
  */
 void putchar_attr(uint col, uint row, uchar c, uchar attr)
 {
-  struct TSYSCALL_POSATTR ca;
+  syscall_posattr_t ca;
   ca.x = col;
   ca.y = row;
   ca.c = c;
@@ -327,7 +327,7 @@ void putchar_attr(uint col, uint row, uchar c, uchar attr)
  */
 void get_cursor_position(uint* col, uint* row)
 {
-  struct TSYSCALL_POSITION ps;
+  syscall_position_t ps;
   ps.x = 0;
   ps.y = 0;
   ps.px = lp(col);
@@ -340,7 +340,7 @@ void get_cursor_position(uint* col, uint* row)
  */
 void set_cursor_position(uint col, uint row)
 {
-  struct TSYSCALL_POSITION ps;
+  syscall_position_t ps;
   ps.x = col;
   ps.y = row;
   ps.px = 0;
@@ -379,10 +379,10 @@ uint getkey(uint mode)
  */
 uint getstr(uchar* str, uint max_count)
 {
-  uint col, row;
+  uint col=0, row=0;
   uint i = 0;
-  uint k;
-  uint p;
+  uint k = 0;
+  uint p = 0;
 
   /* Reset string */
   memset(str, 0, max_count);
@@ -558,7 +558,7 @@ int strncmp(uchar* str1, uchar* str2, uint n)
  */
 uchar* strtok(uchar* src, uchar** next, uchar delim)
 {
-  uchar* s;
+  uchar* s = 0;
 
   while(*src == delim) {
     *src = 0;
@@ -711,9 +711,9 @@ void mfree(void* ptr)
 ul_t lmemcpy(lp_t dst, lp_t src, ul_t size)
 {
   ul_t i = 0;
-  uint rdir;
-  struct TSYSCALL_LMEM ldst;
-  struct TSYSCALL_LMEM lsrc;
+  uint rdir = 0;
+  syscall_lmem_t ldst;
+  syscall_lmem_t lsrc;
   lsrc.n = 0;
 
   if(src > dst) {
@@ -739,7 +739,7 @@ ul_t lmemcpy(lp_t dst, lp_t src, ul_t size)
 ul_t lmemset(lp_t dest, uchar value, ul_t size)
 {
   ul_t i = 0;
-  struct TSYSCALL_LMEM lm;
+  syscall_lmem_t lm;
   lm.n = value;
 
   for(i=0; i<size; i++) {
@@ -754,7 +754,7 @@ ul_t lmemset(lp_t dest, uchar value, ul_t size)
  */
 lp_t lmalloc(ul_t size)
 {
-  struct TSYSCALL_LMEM lm;
+  syscall_lmem_t lm;
   lm.dst = 0;
   lm.n = size;
   syscall(SYSCALL_LMEM_ALLOCATE, lp(&lm));
@@ -766,7 +766,7 @@ lp_t lmalloc(ul_t size)
  */
 void lmfree(lp_t ptr)
 {
-  struct TSYSCALL_LMEM lm;
+  syscall_lmem_t lm;
   lm.dst = ptr;
   lm.n = 0;
   syscall(SYSCALL_LMEM_FREE, lp(&lm));
@@ -775,9 +775,9 @@ void lmfree(lp_t ptr)
 /*
  * Get filesystem info
  */
-uint get_fsinfo(uint disk_index, struct FS_INFO* info)
+uint get_fsinfo(uint disk_index, fs_info_t* info)
 {
-  struct TSYSCALL_FSINFO fi;
+  syscall_fsinfo_t fi;
   fi.disk_index = disk_index;
   fi.info = lp(info);
   return syscall(SYSCALL_FS_GET_INFO, lp(&fi));
@@ -786,9 +786,9 @@ uint get_fsinfo(uint disk_index, struct FS_INFO* info)
 /*
  * Get filesystem entry
  */
-uint get_entry(struct FS_ENTRY* entry, uchar* path, uint parent, uint disk)
+uint get_entry(fs_entry_t* entry, uchar* path, uint parent, uint disk)
 {
-  struct TSYSCALL_FSENTRY fi;
+  syscall_fsentry_t fi;
   fi.entry = lp(entry);
   fi.path = lp(path);
   fi.parent = parent;
@@ -801,7 +801,7 @@ uint get_entry(struct FS_ENTRY* entry, uchar* path, uint parent, uint disk)
  */
 uint read_file(uchar* buff, uchar* path, uint offset, uint count)
 {
-  struct TSYSCALL_FSRWFILE fi;
+  syscall_fsrwfile_t fi;
   fi.buff = lp(buff);
   fi.path = lp(path);
   fi.offset = offset;
@@ -815,7 +815,7 @@ uint read_file(uchar* buff, uchar* path, uint offset, uint count)
  */
 uint write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags)
 {
-  struct TSYSCALL_FSRWFILE fi;
+  syscall_fsrwfile_t fi;
   fi.buff = lp(buff);
   fi.path = lp(path);
   fi.offset = offset;
@@ -829,7 +829,7 @@ uint write_file(uchar* buff, uchar* path, uint offset, uint count, uint flags)
  */
 uint move(uchar* srcpath, uchar* dstpath)
 {
-  struct TSYSCALL_FSSRCDST fi;
+  syscall_fssrcdst_t fi;
   fi.src = lp(srcpath);
   fi.dst = lp(dstpath);
   return syscall(SYSCALL_FS_MOVE, lp(&fi));
@@ -840,7 +840,7 @@ uint move(uchar* srcpath, uchar* dstpath)
  */
 uint copy(uchar* srcpath, uchar* dstpath)
 {
-  struct TSYSCALL_FSSRCDST fi;
+  syscall_fssrcdst_t fi;
   fi.src = lp(srcpath);
   fi.dst = lp(dstpath);
   return syscall(SYSCALL_FS_COPY, lp(&fi));
@@ -865,9 +865,9 @@ uint create_directory(uchar* path)
 /*
  * List dir entries
  */
-uint list(struct FS_ENTRY* entry, uchar* path, uint n)
+uint list(fs_entry_t* entry, uchar* path, uint n)
 {
-  struct TSYSCALL_FSLIST fi;
+  syscall_fslist_t fi;
   fi.entry = lp(entry);
   fi.path = lp(path);
   fi.n = n;
@@ -885,7 +885,7 @@ uint format(uint disk)
 /*
  * Get system date and time
  */
-void time(struct TIME* t)
+void time(struct time_t* t)
 {
   syscall(SYSCALL_CLK_GET_TIME, lp(t));
 }
@@ -949,7 +949,7 @@ uchar* ip_to_str(uchar* str, uint8_t* ip)
  */
 uint recv(uint8_t* src_ip, uchar* buff, uint buff_size)
 {
-  struct TSYSCALL_NETOP no;
+  syscall_netop_t no;
   no.addr = lp(src_ip);
   no.buff = lp(buff);
   no.size = buff_size;
@@ -961,7 +961,7 @@ uint recv(uint8_t* src_ip, uchar* buff, uint buff_size)
  */
 uint send(uint8_t* dst_ip, uchar* buff, uint len)
 {
-  struct TSYSCALL_NETOP no;
+  syscall_netop_t no;
   no.addr = lp(dst_ip);
   no.buff = lp(buff);
   no.size = len;

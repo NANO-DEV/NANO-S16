@@ -213,7 +213,7 @@ uint main(uint argc, uchar* argv[])
 {
   uchar* title_info = "L:     F1:Save ESC:Exit"; /* const */
   uchar  line_ibcd[4]; /* To store line number digits */
-  uint   ibcdt;
+  uint   ibcdt = 0;
 
   uint i = 0;
   uint n = 0;
@@ -235,7 +235,7 @@ uint main(uint argc, uchar* argv[])
   /* Var to get key presses */
   uint k = 0;
 
-  struct FS_ENTRY entry;
+  fs_entry_t entry;
 
   /* Chck usage */
   if(argc != 2) {
@@ -326,7 +326,7 @@ uint main(uint argc, uchar* argv[])
 
   /* Main loop */
   while(k != KEY_ESC) {
-    uint col, line;
+    uint col=0, line=0;
 
     /* Getmouse state */
     get_mouse_state(SSM_CHARS, &mouse_x, &mouse_y, &mouse_buttons);

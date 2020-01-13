@@ -2,8 +2,8 @@
  * Hardware utilities for x86
  */
 
-#ifndef _HWx86_H
-#define _HWx86_H
+#ifndef _HW86_H
+#define _HW86_H
 
 /*
  * Functions defined in hw86.s
@@ -151,4 +151,4 @@ void timer_init(ul_t freq);
  */
 void PIC_init();
 
-#endif   /* _HWx86_H */
+#endif   /* _HW86_H */

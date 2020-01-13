@@ -25,10 +25,10 @@
 
 /* Entries are referenced by their index on the entry table
  * Entry with index n is located at byte:
- *   2*BLOCK_SIZE + n*sizeof(SFS_ENTRY)
+ *   2*BLOCK_SIZE + n*sizeof(sfs_entry_t)
  *
  * Data blocks start at block
- *   2 + ((superblock.nentries*sizeof(SFS_ENTRY)) / BLOCK_SIZE)
+ *   2 + ((superblock.nentries*sizeof(sfs_entry_t)) / BLOCK_SIZE)
  *
  * Data blocks are referenced by their absolute disk block index
  */
@@ -36,12 +36,12 @@
 /* SFS 1.0 ID used in superblock.type */
 #define SFS_TYPE_ID 0x05F50010
 
-struct  SFS_SUPERBLOCK {  /* On-disk superblock structure */
+typedef struct {  /* On-disk superblock structure */
   uint32_t  type;         /* Type of file system. Must be SFS_TYPE_ID */
   uint32_t  size;         /* Total number of block in file system */
   uint32_t  nentries;     /* Number of entries in entries table */
   uint32_t  bootstart;    /* Block index of first boot program block */
-};
+} sfs_superblock_t;
 
 /* The boot program must be stored in contiguous data blocks */
 
@@ -59,7 +59,7 @@ struct  SFS_SUPERBLOCK {  /* On-disk superblock structure */
 /* bits  0-21   second of month */
 /* bits 22-31   months since 2017/01/01 00:00:00 */
 
-struct  SFS_ENTRY {             /* On-disk entry structure */
+ typedef struct {             /* On-disk entry structure */
   uint8_t   flags;              /* Entry flags. See above */
   uint8_t   name[SFS_NAMESIZE]; /* Entry name, must be finished with a 0 */
   uint32_t  time;               /* Last modification date, see format above */
@@ -67,9 +67,9 @@ struct  SFS_ENTRY {             /* On-disk entry structure */
   uint32_t  parent;             /* Parent dir entry, or previous chained entry */
   uint32_t  next;               /* Next chained entry index. See below */
   uint32_t  ref[SFS_ENTRYREFS]; /* References to blocks or entries. See below */
-};
+} sfs_entry_t;
 
-/* With the current implementation, sizeof(SFS_ENTRY) must be a power of 2 */
+/* With the current implementation, sizeof(sfs_entry_t) must be a power of 2 */
 
 /* References in file entries contain ordered data block indexes
  * References in directory entries contain subentries indexes
@@ -151,7 +151,7 @@ void fs_init_info();
  * and is referred to the index on currently available disks list.
  * returns number of available disks
  */
-uint fs_get_info(uint disk_index, struct FS_INFO* info);
+uint fs_get_info(uint disk_index, fs_info_t* info);
 
 /*
  * Get filesystem entry
@@ -163,7 +163,7 @@ uint fs_get_info(uint disk_index, struct FS_INFO* info);
  * - relative to parent if parent index entry or disk id are provided
  * Returns ERROR_NOT_FOUND if error, entry index otherwise
  */
-uint fs_get_entry(struct SFS_ENTRY* entry, uchar* path, uint parent, uint disk);
+uint fs_get_entry(sfs_entry_t* entry, uchar* path, uint parent, uint disk);
 
 /*
  * Read file
@@ -232,7 +232,7 @@ uint fs_create_directory(uchar* path);
  * - ERROR_NOT_FOUND if path does not exist
  * - number of elements in ths directory otherwise
  */
-uint fs_list(struct SFS_ENTRY* entry, uchar* path, uint n);
+uint fs_list(sfs_entry_t* entry, uchar* path, uint n);
 
 /*
  * Create filesystem in disk
@@ -246,13 +246,13 @@ uint fs_format(uint disk);
  * Convert fs time to system TIME
  * See fs time format specification above
  */
-uint fs_fstime_to_systime(uint32_t fst, struct TIME* syst);
+uint fs_fstime_to_systime(uint32_t fst, time_t* syst);
 
 /*
  * Convert system TIME to fs time
  * See fs time format specification above
  */
-uint32_t fs_systime_to_fstime(struct TIME* syst);
+uint32_t fs_systime_to_fstime(time_t* syst);
 
 #endif /* MKFS */
 

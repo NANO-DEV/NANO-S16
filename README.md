@@ -15,49 +15,45 @@ Realtek 8029AS network card is supported.
 PS2 mice are supported.
 
 Developer notes:
-This software is a hobby operating system. Creator makes no warranty for the use of its products and assumes no responsibility for any errors which may appear in this document nor does it make a commitment to update the information contained herein.
+This software is a hobby operating system. Creator makes no warranty for its use and assumes no responsibility for any errors which may appear in this document.
 
 ## System description
 This operating system is composed of several components, detailed in this section.
 
 ### The kernel
-The kernel is the core of the operating system. It connects the application software to the hardware of a computer. The kernel manages memory access for user programs, determines how programs get access to hardware resources, and organizes the data for long-term non-volatile storage with file systems on disks.
-
-This operating system implements a monolithic kernel written in C and NASM, which includes all of its services itself. This reduces the amount of messaging and synchronization involved.
+The kernel is the core of the operating system. It connects the application software to the hardware of a computer. The kernel manages memory access for user programs, determines how programs get access to hardware resources, and organizes the data for long-term non-volatile storage with file systems on disks. This operating system kernel is written in C and assembler.
 
 #### Program execution
-The operating system provides an interface between an application program and the computer hardware, so that an application program can interact with the hardware by obeying rules and procedures programmed into the operating system. The operating system provides also a set of services which simplify development and execution of application programs. Executing an application program involves the creation of a process by the operating system kernel which assigns memory space and other resources, loads program binary code into memory, and initiates execution of the application program which then interacts with the user and with hardware devices.
+The operating system provides an interface between an application program and the computer hardware, so that an application program can interact with the hardware throuhg procedures programmed into the operating system. Todo so, the operating system provides a set of services which simplify development and execution of application programs.
 
-This operating system implements a monotasking task model. Monotasking systems, also referred to as single-tasking systems, are operating systems in which only one thread of execution is run at a given time. When an application is executed, it takes control of the whole computer, save for the 'resident' part of the operating system which handles system calls and hardware interrupts.
+To execute an application program the operating system assigns memory space and other resources, loads program binary code into memory, and initiates execution of the application program which then interacts with the user and with hardware devices.
+
+This operating system implements a monotasking task model: only one thread of execution is run at a given time. When an application is executed, it takes control of the whole computer, save for the 'resident' part of the operating system which handles system calls and hardware interrupts.
 
 #### Operation Mode
-Operating systems determine CPU operation mode. Modern CPUs support multiple modes. Real Mode is a simplistic 16-bit mode that is present on all x86 processors. It was the first x86 mode design and was used by many early operating systems before the birth of Protected Mode. For compatibility purposes, all x86 processors begin execution in Real Mode, emulating an Intel 8088 microprocessor. Real Mode allows unrestricted access to hardware.
-
-This operating system operates kernel and applications in Real Mode.
+This operating system operates kernel and applications in Real Mode. Real Mode is a simplistic 16-bit mode that is present on all x86 processors. It was the first x86 mode design and was used by many early operating systems before the existence of Protected Mode. For compatibility purposes, all x86 processors implement Real Mode and can emulate an Intel 8088 microprocessor.
 
 #### Memory management
-An operating system kernel is responsible for managing the system memory. This ensures that a program does not interfere with memory already in use. In Real Mode, there is a little over 1 MB of "addressable" memory (if A20 line is enabled), which can be accessed using segmentation. There are 16 segments of 64KB each available.
+The operating system kernel is responsible for managing the system memory. In Real Mode, there is a little over 1 MB of "addressable" memory (if A20 line is enabled), which can be accessed using segmentation. There are 16 segments of 64KB each available.
 
 This operating system enables A20 line (if available) and uses a mixed memory model: one segment for kernel (code, stack and data), one segment for user programs (code and stack) and multiple user programs data segments.
 
 Memory map
-* 0x00000000-0x000003FF	(1KB)   - Interrupt Vector Table
-* 0x00000400-0x000004FF	(256B)  - BIOS Data Area
-* 0x00007C00-0x00007FFF	(1KB)   - Boot data
-* 0x00008000-0x00017FFF	(64KB)  - Kernel segment (code, stack and data)
+* 0x00000000-0x000003FF (1KB)   - Interrupt Vector Table
+* 0x00000400-0x000004FF (256B)  - BIOS Data Area
+* 0x00007C00-0x00007FFF (1KB)   - Boot data
+* 0x00008000-0x00017FFF (64KB)  - Kernel segment (code, stack and data)
 * 0x00018000-0x00027FFF (64KB)  - User programs code and stack segment
 * 0x00028000-0x0009FC00 (490KB) - User programs data
-* 0x0009FC00-0x0009FFFF	(1KB)   - Extended BIOS Data Area
+* 0x0009FC00-0x0009FFFF (1KB)   - Extended BIOS Data Area
 * 0x000A0000-0x000FFFFF (384KB) - Video memory, ROM Area
 
 Inside the kernel mapping area there is a dedicated buffer for performing disk operations, and another for kernel heap memory allocation.
 
 #### Disk access and file systems
-File systems allow users and programs to organize and sort files on a computer. Computers usually store data on disks using files. The specific way in which files are stored on a disk is called a file system, and enables files to have names and attributes.
+The specific way in which files are stored on a disk is called a file system. File systems allow users and programs to organize files on a computer.
 
-With an appropriate device driver, the kernel can then access the contents of the disk in a connected storage device in raw format. A file system driver is used to translate this raw data into a set of structures that the operating system can understand. Programs can then deal with these file systems on the basis of filenames.
-
-This operating system supports hard disks and removable disks, and implements a custom file system (NSFS). The NSFS file system is simple, offers good performance and allows light-weight implementations.
+This operating system supports hard disks and removable disks, and implements a custom file system (NSFS). The NSFS file system is simple and easy to implement.
 
 NSFS divides disk space into logical blocks of contiguous space, following this layout:
 
@@ -68,9 +64,7 @@ NSFS divides disk space into logical blocks of contiguous space, following this 
 * Data blocks (blocks n-end): Data blocks referenced by file entries
 
 ### User Interface
-Every computer that is to be operated by a human requires a user interface. One of the most common forms of a user interface is the command-line interface (CLI), where computer commands are typed out line-by-line.
-
-This operating system implements a CLI model, in which each command is typed out using the keyboard after the 'prompt', and then its output appears below, in a compatible display device. The User Manual section contains a more detailed description of the CLI.
+This operating system implements a command-line interface (CLI), where computer commands are typed out line-by-line. The User Manual section contains a more detailed description.
 
 ### Boot process
 When a computer is switched on or reset, it runs through a series of diagnostics called POST (Power-On Self-Test). This sequence culminates in locating a bootable device, such as a removable disk or a hard disk in the order that the firmware is configured to. A device is detected as bootable if it carries a boot sector (512 bytes) with the byte sequence 0x55, 0xAA in bytes 511 and 512 respectively. When the BIOS finds such a boot sector, it loads it into memory at 0x0000:0x7C00 (segment 0, offset 0x7C00). Execution is then transferred to this address.
@@ -80,10 +74,10 @@ The NANO system disk contains a bootloader in this sector. This bootloader scans
 The kernel execution starts, sets up needed drivers and initializes the Command Line Interface.
 
 ### Executable format
-NANO executable file format does not contain metadata or sections. It only contains non-relocatable raw 16-bit x86 machine code assumed to be loaded at 0x1800:0x0000 address. Execution starts also at this address through a special far call instruction. The CLI requires a file name to contain the `.bin` suffix before starting the execution of such file. This is the only safety check performed in order to differentiate executable files.
+NANO executable file format does not contain metadata or sections. It only contains non-relocatable raw 16-bit x86 machine code assumed to be loaded at 0x1800:0x0000 address. Execution starts also at this address through a special far call instruction. The CLI requires a file name to contain the `.bin` suffix before starting the execution of such file.
 
 ## Building
-The building process is expected to be executed in a Linux system. In Windows 10 or greater it can be built using Windows Subsystem for Linux.
+The building process is expected to be executed in a Linux system. In Windows 10 it can be built using Windows Subsystem for Linux.
 
 1. Install required software:
     * make, gcc, bcc, nasm and ld86 to build the operating system and user programs
@@ -108,9 +102,9 @@ After building, run `make qemu` (linux) or `qemu.bat` (windows) from the root di
 
 The network system has been only tested in qemu under Windows, using the Tap-windows driver provided [here](https://openvpn.net/index.php/download/community-downloads.html). This virtual device must be renamed to `tap` and bridged to the actual nic in order to make the default `qemu.bat` script work as expected.
 
-If debug mode is activated in the operating system configuration, it will output debug information through the first serial port in real time. This can be useful for system and user application developers. This serial port is configured to work at 2400 bauds, 8 data bits, odd parity and 1 stop bit.
+If debug mode is activated in the operating system configuration, it outputs debug information through the first serial port in real time. This is useful for developers. This serial port is configured to work at 2400 bauds, 8 data bits, odd parity and 1 stop bit.
 
-Using the provided qemu scripts, the serial port will be automatically mapped to the process standard input/output. For VirtualBox users, it is possible for example to telnet from putty if COM1 is set to TCP mode without a pipe, and the same port if specified in both programs.
+Using the provided qemu scripts, the serial port is mapped to the process standard input/output. For VirtualBox users, it is possible for example to telnet from putty if COM1 is set to TCP mode without a pipe, and the same port if specified in both programs.
 
 The system can operate real hardware if images are written to physical disks. Writing images to disks to test them in real hardware is dangerous and can cause loss of data or boot damage, among other undesired things, in all involved computers. So, it is not recommended to proceed unless this risk is understood and assumed. To write images to physical disks, `dd` can be used in linux:
 ```
@@ -120,14 +114,14 @@ Replace `/dev/sdb` with the actual target storage device. Usually `root` privile
 
 ## User manual
 ### First boot
-A system disk is needed to start the operating system for first time. This disk contains special files required for the computer to boot. If the system disk is removable media like a floppy diskette or an USB drive, it must be introduced in the computer before the boot sequence starts (for example, before turning the computer on). Check also the settings in the BIOS to ensure proper boot device configuration.
+A system disk is needed to start the operating system for first time. This disk contains special files required for the computer to boot. If the system disk is removable media like a floppy diskette, it must be introduced in the computer before the boot sequence starts (for example, before turning the computer on). Check also the settings in the BIOS to ensure proper boot device configuration.
 
 See later sections for information about how to install (clone system) once it is running.
 
 ### Command Line Interface
 Once the computer is turned on, and after boot sequence, the operating system automatically starts the Command Line Interface (CLI). The prompt shows an open angle bracket `>` symbol and a blinking cursor (underscore) where a command is expected to be introduced using the keyboard.
 
-A command is usually a short text string constituted of several parts. The first part, is the command name (just a word), which allows the system to identify which command must be executed. Sometimes, after the name, one or more parameters must be provided, depending on the specific syntax of each command. For example, `copy doc.txt doc-new.txt` is a command made of three parts: the name (`copy`) and two parameters (`doc.txt` and `doc-new.txt`), whose meaning is specific to the copy command syntax. System commands syntax is discussed in a later section.
+A command is a short text string constituted of several parts. The first part, is the command name (just a word), which allows the system to identify which command must be executed. Sometimes, after the name, one or more parameters must be provided, depending on the specific syntax of each command. For example, `copy doc.txt doc-new.txt` is a command made of three parts: the name (`copy`) and two parameters (`doc.txt` and `doc-new.txt`), whose meaning is specific to the copy command syntax. System commands syntax is discussed in a later section.
 
 There are two different types of valid commands:
 * The path of an executable file (`.bin`) will cause the system to execute it
@@ -156,7 +150,7 @@ hd0/documents/file.txt
 docs/other/readme.txt
 ```
 
-Note that all files and directories have their own name. This name must not contain spaces or slashes, and must be unique (differentiation is case sensitive) inside its parent directory. The fact that two files can be identically named if they are located in different directories, explains the need of using paths to absolutely identify them.
+Note that all files and directories have their own name. This name must not contain spaces or slashes, and must be unique (differentiation is case sensitive) inside its directory.
 
 When booting the operating system from a flash drive, the BIOS emulates instead a floppy disk or a hard disk, so the flash drive can still be accessed using one of the previous identifiers.
 
@@ -260,11 +254,11 @@ The following parameters can be configured using the `config` command interface:
 * `net_IP`: Specify host network IP
 * `net_gate`: Specify network gateway
 
-## User programs cross development
+## User programs development
 
-The easiest way to cross develop new user programs is:
+The easiest way to develop new user programs is through cross development:
 
-1. Setup the development system so it contains a copy of the full source tree and it's able to build and test it. See the building and testing pages.
+1. Setup the development system so it contains a copy of the full operating system source tree and it's able to build and test it. See the building and testing sections in this document.
 
 2. Create a new `programname.c` file in `source/programs` folder with this code:
     ```

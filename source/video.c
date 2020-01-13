@@ -154,7 +154,7 @@ static void set_cursor_pixel(uint x, uint y, uint c)
  */
 static void update_cursor_buffer()
 {
-  uint i;
+  uint i=0;
   for(i=0; i<FNT_W-2; i++) {
     cursor_buff[i] =
       get_pixel(cursor_buff_x+i, cursor_buff_y, 0);
@@ -166,7 +166,7 @@ static void update_cursor_buffer()
  */
 static void draw_cursor_buffer()
 {
-  uint i;
+  uint i=0;
   for(i=0; i<FNT_W-2; i++) {
     set_pixel(cursor_buff_x+i, cursor_buff_y,
       cursor_buff[i]);
@@ -189,7 +189,7 @@ static uint is_visible_char(uchar c)
  */
 void video_clear_screen()
 {
-  uint i, j;
+  uint i=0, j=0;
   uint tcursor_shown = cursor_shown;
   video_hide_cursor();
   video_window_y = 0; /* Reset window */
@@ -217,7 +217,7 @@ void video_clear_screen()
  */
 static void get_BIOS_glyph(uchar* buff, uint character)
 {
-  uint i;
+  uint i=0;
   lp_t char_addr = BIOS_font + (lp_t)BIOS_font_offset*(lp_t)character;
   for(i=0; i<video_font_h; i++) {
     buff[i] = lmem_getbyte(char_addr + (lp_t)i);
@@ -229,7 +229,7 @@ static void get_BIOS_glyph(uchar* buff, uint character)
  */
 void video_draw_char(uint x, uint y, uint c, uint text_cl, uint back_cl)
 {
-  uint i, j;
+  uint i=0, j=0;
   uchar buff[16]; /* This fixed size should be enough */
 
   if(is_visible_char(c)) {
@@ -265,7 +265,7 @@ void video_draw_char(uint x, uint y, uint c, uint text_cl, uint back_cl)
  */
 static void draw_cursor(uint x, uint y, uint c)
 {
-  uint i;
+  uint i=x;
 
   /* Draw bar */
   for(i=x; i<x+FNT_W-2; i++) {
@@ -367,7 +367,7 @@ static void update_cursor_after_char(uchar c)
   /* If new position exceeds screen height, scroll */
   if(tc_row > screen_height_c-1) {
     uint tcursor_shown = cursor_shown;
-    uint i, j;
+    uint i=0, j=0;
 
     /* After two full screens, reset window */
     if(video_window_y > 2*screen_height_px) {

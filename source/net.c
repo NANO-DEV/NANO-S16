@@ -43,19 +43,19 @@ uint net_irq = 9; /* network irq */
 extern void install_net_IRQ_handler();
 
 /* Byte swap operation */
-#define bswap_16(value) \
+#define BSWAP_16(value) \
 ((((value) & 0xff) << 8) | ((value) >> 8))
 
 #define NUM_COMPATIBLE_DEVICES 1
-struct DEVICE_ID {
-	uint16_t  vendor_id;
-	uint16_t  device_id;
+struct device_info {
+  uint16_t  vendor_id;
+  uint16_t  device_id;
 } ne2k_compatible[NUM_COMPATIBLE_DEVICES] = {
-	0x10EC, 0x8029, /* Realtek */
+  0x10EC, 0x8029, /* Realtek */
 };
 
 /* Registers */
-#define NE2K_CR		    0x00 /* Command register */
+#define NE2K_CR       0x00 /* Command register */
 /* 7-6:PS1-PS0 5-3:RD2-0 2:TXP 1:STA 0:STP */
 
 /* Page 0 registers, read */
@@ -121,17 +121,17 @@ static uint base = 0x300; /* Base device port */
 static uint8_t local_mac[MAC_LEN]; /* Get from network card */
 
 /* IP protocol network  params */
-uint8_t local_ip[IP_LEN] = {192,168,1,2}; /* Default value, global */
-uint8_t local_gate[IP_LEN] = {192,168,1,1}; /* Default value, global */
+uint8_t local_ip[IP_LEN] = {192,168,0,40}; /* Default value, global */
+uint8_t local_gate[IP_LEN] = {192,168,0,1}; /* Default value, global */
 uint8_t local_net[IP_LEN] = {255,255,255,0}; /* Default value, global */
 
 /* Ethernet related */
-struct ethhdr {
-	uint8_t  dst[MAC_LEN];
-	uint8_t  src[MAC_LEN];
-	uint16_t type;
-	uint8_t  data[0];	/* size 46-1500 */
-};
+typedef struct {
+  uint8_t  dst[MAC_LEN];
+  uint8_t  src[MAC_LEN];
+  uint16_t type;
+  uint8_t  data[0]; /* size 46-1500 */
+} eth_hdr_t;
 
 /* Values of ethhdr->eh_type */
 #define ETH_TYPE_ARP  0x0806
@@ -143,31 +143,31 @@ struct ethhdr {
 #define ETH_VLAN_LEN  4
 #define ETH_CRC_LEN   4
 
-#define ETH_PKT_MAX_LEN	(ETH_HDR_LEN+ETH_VLAN_LEN+ETH_MTU)
+#define ETH_PKT_MAX_LEN (ETH_HDR_LEN+ETH_VLAN_LEN+ETH_MTU)
 
 /* ARP related */
-struct arphdr {
-	uint16_t hrd; 	/* format of hardware address	*/
-	uint16_t pro; 	/* format of protocol address	*/
-	uint8_t  hln; 	/* length of hardware address	*/
-	uint8_t  pln; 	/* length of protocol address	*/
-	uint16_t op;  	/* arp/rarp operation	*/
-	uint8_t  sha[MAC_LEN];
-	uint8_t  spa[IP_LEN];
-	uint8_t  dha[MAC_LEN];
-	uint8_t  dpa[IP_LEN];
-};
+typedef struct {
+  uint16_t hrd;   /* format of hardware address */
+  uint16_t pro;   /* format of protocol address */
+  uint8_t  hln;   /* length of hardware address */
+  uint8_t  pln;   /* length of protocol address */
+  uint16_t op;    /* arp/rarp operation */
+  uint8_t  sha[MAC_LEN];
+  uint8_t  spa[IP_LEN];
+  uint8_t  dha[MAC_LEN];
+  uint8_t  dpa[IP_LEN];
+} arp_hdr_t;
 
 /* Values of arphdr->ah_hrd */
-#define ARP_HTYPE_ETHER 1	/* Ethernet hardware type	*/
+#define ARP_HTYPE_ETHER 1 /* Ethernet hardware type */
 
 /* Values of arphdr->ah_pro */
 #define ARP_PTYPE_IP    0x0800 /* IP protocol type */
 #define ARP_PTYPE_ARP   0x0806 /* ARP protocol type */
 
 /* Values of arphdr->ah_op */
-#define ARP_OP_REQUEST  1	/* Request op code */
-#define ARP_OP_REPLY    2	/* Reply op code */
+#define ARP_OP_REQUEST  1 /* Request op code */
+#define ARP_OP_REPLY    2 /* Reply op code */
 
 
 /* IP Protocol */
@@ -176,7 +176,7 @@ struct arphdr {
 #define IP_PROTOCOL_UDP  17
 
 /* IPv4 Header */
-struct IPhdr {
+typedef struct {
   uint8_t  verIhl;
   uint8_t  tos;
   uint16_t len;
@@ -187,19 +187,19 @@ struct IPhdr {
   uint16_t checksum;
   uint8_t  src[IP_LEN];
   uint8_t  dst[IP_LEN];
-};
+} ip_hdr_t;
 
 /* UDP header */
-struct UDPhdr {
+typedef struct {
   uint16_t srcPort;
   uint16_t dstPort;
   uint16_t len;
   uint16_t checksum;
-};
+} udp_hdr_t;
 
 /* ARP table to hold IP-MAC entries */
 #define ARP_TABLE_LEN 8
-struct ARP_TABLE {
+struct arp_table_info {
   uint8_t ip[IP_LEN];
   uint8_t mac[MAC_LEN];
 } arp_table[ARP_TABLE_LEN];
@@ -207,7 +207,7 @@ struct ARP_TABLE {
 /* Given an IP address, provide effective IP address to send packet */
 uint8_t* get_effective_ip(uint8_t* ip)
 {
-  uint i;
+  uint i = 0;
 
   /* If IP is outside the local network return gate address */
   for(i=0; i<IP_LEN; i++) {
@@ -218,7 +218,7 @@ uint8_t* get_effective_ip(uint8_t* ip)
   if(i!=IP_LEN) {
     return local_gate;
   }
-	/* Otherwise, return the same IP */
+  /* Otherwise, return the same IP */
   return ip;
 }
 
@@ -362,8 +362,8 @@ uint32_t poly8_lookup[256] =
 /* bcc fails to provide this func */
 uint32_t xor32(uint32_t a, uint32_t b)
 {
-  uint i;
-  uint32_t r;
+  uint i = 0;
+  uint32_t r = 0;
   uint8_t* pa = &a;
   uint8_t* pb = &b;
   uint8_t* pr = &r;
@@ -379,11 +379,11 @@ uint32_t xor32(uint32_t a, uint32_t b)
 /* Calculate a checksum on a buffer */
 uint32_t crc32_byte(uint8_t* p, uint32_t bytelength)
 {
-	uint32_t crc = 0xFFFFFFFFL;
-	while(bytelength-- !=0) {
+  uint32_t crc = 0xFFFFFFFFL;
+  while(bytelength-- !=0) {
     crc = xor32(poly8_lookup[((uint8_t)(crc&0xFF)^(*(p++)))], (crc>>8));
   }
-	return (~crc);
+  return (~crc);
 }
 
 /* Select a registers page in the ne2k */
@@ -399,36 +399,36 @@ void ne2k_page_select(uint page)
  */
 uint ne2k_send(uint8_t* data, uint len)
 {
-  uint i;
-	while(inb(base + NE2K_CR) == 0x26) { /* Abort/Complete DMA + Transmit + Start */
+  uint i = 0;
+  while(inb(base + NE2K_CR) == 0x26) { /* Abort/Complete DMA + Transmit + Start */
   }
 
   /* Prepare buffer and size */
   ne2k_page_select(0);
-	outb(0, base + NE2K_RSAR0);
-	outb(0x40, base + NE2K_RSAR1);
-	outb(len & 0xFF, base + NE2K_RBCR0);
-	outb((len >> 8) & 0xFF, base + NE2K_RBCR1);
+  outb(0, base + NE2K_RSAR0);
+  outb(0x40, base + NE2K_RSAR1);
+  outb(len & 0xFF, base + NE2K_RBCR0);
+  outb((len >> 8) & 0xFF, base + NE2K_RBCR1);
 
-	outb(0x12, base + NE2K_CR); 	/* Start write */
+  outb(0x12, base + NE2K_CR);  /* Start write */
 
   /* Load buffer */
   for(i=0; i<len; i++) {
-	  outb(data[i], base + NE2K_DATA);
+    outb(data[i], base + NE2K_DATA);
    }
 
   /* Wait until operation completed */
-	while((inb(base + NE2K_ISR) & 0x40) == 0) {
+  while((inb(base + NE2K_ISR) & 0x40) == 0) {
   }
 
-	outb(0x40, base + NE2K_ISR); /* Clear completed bit */
+  outb(0x40, base + NE2K_ISR); /* Clear completed bit */
 
-	outb(0x40, base + NE2K_TPSR);
-	outb((len & 0xFF), base + NE2K_TBCR0);
-	outb(((len >> 8) & 0xFF), base + NE2K_TBCR1);
-	outb(0x26, base + NE2K_CR); /* Abort/Complete DMA + Transmit + Start */
+  outb(0x40, base + NE2K_TPSR);
+  outb((len & 0xFF), base + NE2K_TBCR0);
+  outb(((len >> 8) & 0xFF), base + NE2K_TBCR1);
+  outb(0x26, base + NE2K_CR); /* Abort/Complete DMA + Transmit + Start */
 
-	return 0;
+  return 0;
 }
 
 /*
@@ -436,14 +436,14 @@ uint ne2k_send(uint8_t* data, uint len)
  */
 uint eth_send(uint8_t* dst_mac, uint type, uint8_t* data, uint len)
 {
-  uint head_len = sizeof(struct ethhdr);
-  struct ethhdr* eh = (struct ethhdr*)data;
+  uint head_len = sizeof(eth_hdr_t);
+  eth_hdr_t* eh = (eth_hdr_t*)data;
   uint32_t eth_crc = 0;
 
   memcpy(eh->data, data, len);
   memcpy(eh->dst, dst_mac, sizeof(eh->dst));
-	memcpy(eh->src, local_mac, sizeof(eh->src));
-	eh->type = bswap_16(type);
+  memcpy(eh->src, local_mac, sizeof(eh->src));
+  eh->type = BSWAP_16(type);
 
   eth_crc = crc32_byte(data, head_len+len);
   memcpy(&eh->data[len], &eth_crc, sizeof(eth_crc));
@@ -455,16 +455,16 @@ uint eth_send(uint8_t* dst_mac, uint type, uint8_t* data, uint len)
  */
 uint arp_request(uint8_t* ip)
 {
-  uint head_len = sizeof(struct arphdr);
+  uint head_len = sizeof(arp_hdr_t);
   uint8_t broadcast_mac[MAC_LEN];
-  struct arphdr* ah = snd_buff;
+  arp_hdr_t* ah = snd_buff;
   memset(broadcast_mac, 0xFF, sizeof(broadcast_mac));
 
-  ah->hrd = bswap_16(ARP_HTYPE_ETHER);
-  ah->pro = bswap_16(ARP_PTYPE_IP);
+  ah->hrd = BSWAP_16(ARP_HTYPE_ETHER);
+  ah->pro = BSWAP_16(ARP_PTYPE_IP);
   ah->hln = MAC_LEN;
   ah->pln = IP_LEN;
-  ah->op = bswap_16(ARP_OP_REQUEST);
+  ah->op = BSWAP_16(ARP_OP_REQUEST);
   memcpy(ah->sha, local_mac, sizeof(ah->sha));
   memcpy(ah->spa, local_ip, sizeof(ah->spa));
   memcpy(ah->dha, broadcast_mac, sizeof(ah->dha));
@@ -477,14 +477,14 @@ uint arp_request(uint8_t* ip)
  */
 uint arp_reply(uint8_t* mac, uint8_t* ip)
 {
-  uint head_len = sizeof(struct arphdr);
-  struct arphdr* ah = snd_buff;
+  uint head_len = sizeof(arp_hdr_t);
+  arp_hdr_t* ah = snd_buff;
 
-  ah->hrd = bswap_16(ARP_HTYPE_ETHER);
-  ah->pro = bswap_16(ARP_PTYPE_IP);
+  ah->hrd = BSWAP_16(ARP_HTYPE_ETHER);
+  ah->pro = BSWAP_16(ARP_PTYPE_IP);
   ah->hln = MAC_LEN;
   ah->pln = IP_LEN;
-  ah->op = bswap_16(ARP_OP_REPLY);
+  ah->op = BSWAP_16(ARP_OP_REPLY);
   memcpy(ah->sha, local_mac, sizeof(ah->sha));
   memcpy(ah->spa, local_ip, sizeof(ah->spa));
   memcpy(ah->dha, mac, sizeof(ah->dha));
@@ -497,19 +497,19 @@ uint arp_reply(uint8_t* mac, uint8_t* ip)
  */
 uint ip_send(uint8_t* dst_ip, uint8_t protocol, uint8_t* data, uint len)
 {
-  uint head_len = sizeof(struct IPhdr);
-  struct IPhdr* ih = data;
+  uint head_len = sizeof(ip_hdr_t);
+  ip_hdr_t* ih = data;
   uint checksum = 0;
   uint8_t* dst_mac = 0;
   uint i = 0;
-	static uint id = 0;
+  static uint id = 0;
 
   memcpy(&(data[head_len]), data, len);
   ih->verIhl = (4<<4) | 5;
   ih->tos = 0;
-  ih->len = bswap_16(len+head_len);
-  ih->id = bswap_16(++id);
-  ih->offset = bswap_16(0);
+  ih->len = BSWAP_16(len+head_len);
+  ih->id = BSWAP_16(++id);
+  ih->offset = BSWAP_16(0);
   ih->ttl = 128;
   ih->protocol = protocol;
   ih->checksum = 0;
@@ -517,7 +517,7 @@ uint ip_send(uint8_t* dst_ip, uint8_t protocol, uint8_t* data, uint len)
   memcpy(ih->dst, dst_ip, sizeof(ih->dst));
 
   checksum = net_checksum(data, head_len);
-  ih->checksum = bswap_16(checksum);
+  ih->checksum = BSWAP_16(checksum);
 
   /* Try to find hw address in table */
   dst_mac = find_mac_in_table(get_effective_ip(dst_ip));
@@ -575,18 +575,18 @@ uint provide_mac_address(uint8_t* ip)
 uint udp_send(uint8_t* dst_ip, uint src_port, uint dst_port,
   uint8_t protocol, uint8_t* data, uint len)
 {
-	struct UDPIPhdr {
-		uint8_t  sender[4];
-		uint8_t  recver[4];
-		uint8_t  zero;
-		uint8_t  protocol;
-		uint16_t len;
-	};
+  typedef struct {
+    uint8_t  sender[4];
+    uint8_t  recver[4];
+    uint8_t  zero;
+    uint8_t  protocol;
+    uint16_t len;
+  } udpip_hdr_t;
 
-  uint head_len = sizeof(struct UDPhdr);
-	uint iphead_len = sizeof(struct UDPIPhdr);
-	struct UDPIPhdr* ih = snd_buff;
-  struct UDPhdr* uh = &snd_buff[iphead_len];
+  uint head_len = sizeof(udp_hdr_t);
+  uint iphead_len = sizeof(udpip_hdr_t);
+  udpip_hdr_t* ih = snd_buff;
+  udp_hdr_t* uh = &snd_buff[iphead_len];
   uint checksum = 0;
 
   /* Provide hw addresss before process */
@@ -596,26 +596,26 @@ uint udp_send(uint8_t* dst_ip, uint src_port, uint dst_port,
     return 1;
   }
 
-	/* Clamp len */
-	len = min(sizeof(snd_buff) - iphead_len-head_len -
-		sizeof(struct IPhdr) - sizeof(struct ethhdr),
-		len);
+  /* Clamp len */
+  len = min(sizeof(snd_buff) - iphead_len-head_len -
+    sizeof(ip_hdr_t) - sizeof(eth_hdr_t),
+    len);
 
   /* Generate UDP packet and send */
-	memset(snd_buff, 0, sizeof(snd_buff));
+  memset(snd_buff, 0, sizeof(snd_buff));
   memcpy(&(snd_buff[iphead_len+head_len]), data, len);
 
-  uh->srcPort = bswap_16(src_port);
-  uh->dstPort = bswap_16(dst_port);
-  uh->len = bswap_16(len+head_len);
+  uh->srcPort = BSWAP_16(src_port);
+  uh->dstPort = BSWAP_16(dst_port);
+  uh->len = BSWAP_16(len+head_len);
 
-	memcpy(ih->sender, local_ip, sizeof(ih->sender));
-	memcpy(ih->recver, dst_ip, sizeof(ih->recver));
-	ih->zero = 0;
-	ih->protocol = IP_PROTOCOL_UDP;
-	ih->len = uh->len;
+  memcpy(ih->sender, local_ip, sizeof(ih->sender));
+  memcpy(ih->recver, dst_ip, sizeof(ih->recver));
+  ih->zero = 0;
+  ih->protocol = IP_PROTOCOL_UDP;
+  ih->len = uh->len;
   checksum = net_checksum(snd_buff, iphead_len+len+head_len);
-  uh->checksum = bswap_16(checksum);
+  uh->checksum = BSWAP_16(checksum);
   return ip_send(dst_ip, IP_PROTOCOL_UDP, uh, head_len+len);
 }
 
@@ -624,8 +624,8 @@ uint udp_send(uint8_t* dst_ip, uint src_port, uint dst_port,
  */
 void ip_recv_process(uint8_t* buff, uint len)
 {
-  uint head_len = sizeof(struct IPhdr);
-  struct IPhdr* ih = buff;
+  uint head_len = sizeof(ip_hdr_t);
+  ip_hdr_t* ih = buff;
 
   /* Store only one packet */
   if(rcv_size > 0) {
@@ -636,22 +636,22 @@ void ip_recv_process(uint8_t* buff, uint len)
   /* Check UDP packet type */
   if(ih->protocol == IP_PROTOCOL_UDP) {
     uint i = 0;
-    struct UDPhdr* uh;
+    udp_hdr_t* uh;
     buff += head_len; /* Advance buffer */
     uh = buff;
-    head_len = sizeof(struct UDPhdr);
+    head_len = sizeof(udp_hdr_t);
 
     debugstr("net: UDP received: %u.%u.%u.%u:%u to port %u (%u bytes)\n\r",
       ih->src[0], ih->src[1], ih->src[2], ih->src[3],
-      bswap_16(uh->srcPort), bswap_16(uh->dstPort), bswap_16(uh->len) - head_len);
+      BSWAP_16(uh->srcPort), BSWAP_16(uh->dstPort), BSWAP_16(uh->len) - head_len);
 
     /* Store it */
-    if(bswap_16(uh->dstPort) == NSUDP_PROTO_PORT) {
-      rcv_port = bswap_16(uh->srcPort);
-      rcv_size = min(bswap_16(uh->len)-head_len, sizeof(rcv_buff));
+    if(BSWAP_16(uh->dstPort) == NSUDP_PROTO_PORT) {
+      rcv_port = BSWAP_16(uh->srcPort);
+      rcv_size = min(BSWAP_16(uh->len)-head_len, sizeof(rcv_buff));
       memcpy(rcv_addr, ih->src, sizeof(rcv_addr));
       memcpy(rcv_buff, &buff[head_len], rcv_size);
-			debugstr("net: UDP packet was stored\n\r");
+      debugstr("net: UDP packet was stored\n\r");
     }
   }
 }
@@ -661,13 +661,13 @@ void ip_recv_process(uint8_t* buff, uint len)
  */
 void arp_recv_process(uint8_t* buff, uint len)
 {
-  struct arphdr* ah = buff;
+  arp_hdr_t* ah = buff;
 
-  if(ah->hrd == bswap_16(ARP_HTYPE_ETHER) &&
-    ah->pro == bswap_16(ARP_PTYPE_IP)) {
+  if(ah->hrd == BSWAP_16(ARP_HTYPE_ETHER) &&
+    ah->pro == BSWAP_16(ARP_PTYPE_IP)) {
     /* If it's a reply */
-    if(ah->op == bswap_16(ARP_OP_REPLY) &&
-			memcmp(ah->dpa, local_ip, sizeof(ah->dpa)) == 0) {
+    if(ah->op == BSWAP_16(ARP_OP_REPLY) &&
+      memcmp(ah->dpa, local_ip, sizeof(ah->dpa)) == 0) {
       /* If exists in table, update entry */
       uint8_t* mac = find_mac_in_table(ah->spa);
       if(mac) {
@@ -689,14 +689,13 @@ void arp_recv_process(uint8_t* buff, uint len)
         }
       }
     /* Reply in case it's a local MAC address request */
-    } else if(ah->op == bswap_16(ARP_OP_REQUEST)) {
+    } else if(ah->op == BSWAP_16(ARP_OP_REQUEST)) {
       if(memcmp(ah->dpa, local_ip, sizeof(ah->dpa)) == 0) {
         arp_reply(ah->sha, ah->spa);
         debugstr("net: sent arp reply\n\r");
       }
     }
   } else {
-    /* debugstr("net: received an unknown type arp packet\n\r"); */
   }
 }
 
@@ -705,17 +704,17 @@ void arp_recv_process(uint8_t* buff, uint len)
  */
 void ne2k_receive()
 {
-  uint i;
-  struct ethhdr* eh = (struct ethhdr*)tmp_buff;
+  uint i = 0;
+  eth_hdr_t* eh = (eth_hdr_t*)tmp_buff;
 
-	struct {
-		uint8_t rsr;
-		uint8_t next;
-		uint    len;
-	} info;
+  struct {
+    uint8_t rsr;
+    uint8_t next;
+    uint    len;
+  } info;
 
-	/* Maybe more than one packet is in buffer */
-	/* Retrieve all of them */
+  /* Maybe more than one packet is in buffer */
+  /* Retrieve all of them */
   uint8_t bndry = 0;
   uint8_t current = 0;
 
@@ -725,38 +724,38 @@ void ne2k_receive()
   bndry = inb(base + NE2K_BNRY);
 
   while(bndry != current) {
-		/* Get reception info */
+    /* Get reception info */
     ne2k_page_select(0);
-  	outb(0, base + NE2K_RSAR0);
-  	outb(rx_next, base + NE2K_RSAR1);
-  	outb(4, base + NE2K_RBCR0);
-  	outb(0, base + NE2K_RBCR1);
-  	outb(0x12, base + NE2K_CR); /* Read and start */
+    outb(0, base + NE2K_RSAR0);
+    outb(rx_next, base + NE2K_RSAR1);
+    outb(4, base + NE2K_RBCR0);
+    outb(0, base + NE2K_RBCR1);
+    outb(0x12, base + NE2K_CR); /* Read and start */
 
     for(i=0; i<4; i++) {
-  	  ((uint8_t*)&info)[i] = inb(base + NE2K_DATA);
+      ((uint8_t*)&info)[i] = inb(base + NE2K_DATA);
     }
 
-		/* Get the data */
-  	outb(4, base + NE2K_RSAR0);
-  	outb(rx_next, base + NE2K_RSAR1);
+    /* Get the data */
+    outb(4, base + NE2K_RSAR0);
+    outb(rx_next, base + NE2K_RSAR1);
 
-  	outb((info.len & 0xFF), base + NE2K_RBCR0);
-  	outb(((info.len >> 8) & 0xFF), base + NE2K_RBCR1);
+    outb((info.len & 0xFF), base + NE2K_RBCR0);
+    outb(((info.len >> 8) & 0xFF), base + NE2K_RBCR1);
 
-		outb(0x12, base + NE2K_CR); /* Read and start */
+    outb(0x12, base + NE2K_CR); /* Read and start */
 
     for(i=0; i<info.len; i++) {
-  	  tmp_buff[min(i, sizeof(tmp_buff)-1)] = inb(base + NE2K_DATA);
+      tmp_buff[min(i, sizeof(tmp_buff)-1)] = inb(base + NE2K_DATA);
     }
 
-		/* Wait for operation completed */
-  	while((inb(base + NE2K_ISR) & 0x40) == 0) {
+    /* Wait for operation completed */
+    while((inb(base + NE2K_ISR) & 0x40) == 0) {
     }
-		/* Clear completed bit */
+    /* Clear completed bit */
     outb(0x40, base + NE2K_ISR);
 
-		/* Update reception pages */
+    /* Update reception pages */
     if(info.next) {
       rx_next = info.next;
       if(rx_next == 0x40) {
@@ -766,38 +765,36 @@ void ne2k_receive()
       }
     }
 
-		/* Update current and bndry values */
+    /* Update current and bndry values */
     ne2k_page_select(1);
     current = inb(base + NE2K_CURR);
     ne2k_page_select(0);
     bndry = inb(base + NE2K_BNRY);
 
- 	  /* Wait and clear */
+    /* Wait and clear */
     while((inb(base + NE2K_ISR) & 0x40) == 0) {
     }
     outb(0x40, base + NE2K_ISR);
 
-		/* Process packet if broadcast or unicast to local_mac */
-		if(!memcmp(eh->dst, local_mac, sizeof(eh->dst)) ||
-			!memcmp(eh->dst, arp_table[0].mac, sizeof(eh->dst)))
-		{
-			/* Clamp length to reception buffer size */
-			info.len = min(sizeof(tmp_buff), info.len);
+    /* Process packet if broadcast or unicast to local_mac */
+    if(!memcmp(eh->dst, local_mac, sizeof(eh->dst)) ||
+      !memcmp(eh->dst, arp_table[0].mac, sizeof(eh->dst)))
+    {
+      /* Clamp length to reception buffer size */
+      info.len = min(sizeof(tmp_buff), info.len);
 
-	    /* Redirect packets to type handlers */
-	    switch(bswap_16(eh->type)) {
-	  	case ARP_PTYPE_IP:
-	  		ip_recv_process(eh->data, info.len-sizeof(struct ethhdr));
-	  		break;
-	  	case ARP_PTYPE_ARP:
-	      arp_recv_process(eh->data, info.len-sizeof(struct ethhdr));
-	  		break;
-	  	/*default:*/
-	  	  /* debugstr("net: received unknown type ethernet packet (%x)\n\r", bswap_16(eh->type)); */
-	    };
-		}
+      /* Redirect packets to type handlers */
+      switch(BSWAP_16(eh->type)) {
+      case ARP_PTYPE_IP:
+        ip_recv_process(eh->data, info.len-sizeof(eth_hdr_t));
+        break;
+      case ARP_PTYPE_ARP:
+        arp_recv_process(eh->data, info.len-sizeof(eth_hdr_t));
+        break;
+      };
+    }
 
-		/* Break if no more packets */
+    /* Break if no more packets */
     if(info.next == current || !info.next) {
       break;
     }
@@ -809,23 +806,23 @@ void ne2k_receive()
  */
 void net_handler()
 {
-	uint8_t isr;
+  uint8_t isr = 0;
 
-	/* Network must be enabled */
-	if(!network_enabled) {
-		return;
-	}
+  /* Network must be enabled */
+  if(!network_enabled) {
+    return;
+  }
 
   /* Iterate because more interrupts
    * can be received while handling previous */
   while((isr = inb(base + NE2K_ISR)) != 0) {
-  	if(isr & NE2K_STAT_RX) {
-  		ne2k_receive();
-  	}
-  	if(isr & NE2K_STAT_TX) {
-  	}
+    if(isr & NE2K_STAT_RX) {
+      ne2k_receive();
+    }
+    if(isr & NE2K_STAT_TX) {
+    }
 
-		/* Clear interrupt bits */
+    /* Clear interrupt bits */
     outb(isr, base + NE2K_ISR);
   }
   return;
@@ -836,7 +833,7 @@ void net_handler()
  */
 void net_init()
 {
-  uint i;
+  uint i = 0;
 
   /* Reset translation table */
   memset(arp_table, 0, sizeof(arp_table));
@@ -848,89 +845,89 @@ void net_init()
 
   /* Detect card */
   if(network_enabled == 1) {
-		struct PCI_DEVICE* pdev;
+    pci_device_t* pdev;
     network_enabled = 0;
 
-		/* Find a compatible device */
-		for(i=0; i<NUM_COMPATIBLE_DEVICES; i++) {
-			pdev = pci_find_device(ne2k_compatible[i].vendor_id,
-				ne2k_compatible[i].device_id);
+    /* Find a compatible device */
+    for(i=0; i<NUM_COMPATIBLE_DEVICES; i++) {
+      pdev = pci_find_device(ne2k_compatible[i].vendor_id,
+        ne2k_compatible[i].device_id);
 
-			if(pdev) {
-				break;
-			}
-		}
+      if(pdev) {
+        break;
+      }
+    }
 
-		/* If found, check */
-		if(pdev) {
-			base = pdev->bar0 & ~3;
-			net_irq = pdev->interrput_line;
-	  	outb(0x80, base + NE2K_IMR); /* Disable interrupts except reset */
-	    outb(0xFF, base + NE2K_ISR); /* Clear interrupts */
-	  	outb(inb(base + NE2K_RESET), base + NE2K_RESET); /* Reset */
-	    wait(250); /* Wait */
-	    if((inb(base + NE2K_ISR) == 0x80)) { /* Detect reset interrupt */
-				debugstr("net: ne2000 compatible nic found. base=%x irq=%x\n\r", base, net_irq);
-	      network_enabled = 1;
-	  	}
-		}
+    /* If found, check */
+    if(pdev) {
+      base = pdev->bar0 & ~3;
+      net_irq = pdev->interrput_line;
+      outb(0x80, base + NE2K_IMR); /* Disable interrupts except reset */
+      outb(0xFF, base + NE2K_ISR); /* Clear interrupts */
+      outb(inb(base + NE2K_RESET), base + NE2K_RESET); /* Reset */
+      wait(250); /* Wait */
+      if((inb(base + NE2K_ISR) == 0x80)) { /* Detect reset interrupt */
+        debugstr("net: ne2000 compatible nic found. base=%x irq=%x\n\r", base, net_irq);
+        network_enabled = 1;
+      }
+    }
   }
 
   /* Abort if network is not enabled or device not found */
   if(network_enabled == 0) {
-		debugstr("net: compatible nic not found\n\r");
+    debugstr("net: compatible nic not found\n\r");
     return;
   }
 
   /* Install handler */
-	install_net_IRQ_handler();
+  install_net_IRQ_handler();
 
   /* Reset, and wait */
-	outb(inb(base + NE2K_RESET), base + NE2K_RESET);
-	while((inb(base + NE2K_ISR) & 0x80) == 0) {
-	}
+  outb(inb(base + NE2K_RESET), base + NE2K_RESET);
+  while((inb(base + NE2K_ISR) & 0x80) == 0) {
+  }
 
-	debugstr("net: nic reset\n\r");
+  debugstr("net: nic reset\n\r");
 
   ne2k_page_select(0);
-	outb(0x21, base + NE2K_CR);  /* Stop DMA and MAC */
-	outb(0x48, base + NE2K_DCR); /* Access by bytes */
-	outb(0xE0, base + NE2K_TCR); /* Transmit: normal operation, aut-append and check CRC */
-	outb(0xDE, base + NE2K_RCR); /* Receive: Accept and buffer */
-	outb(0x00, base + NE2K_IMR); /* Disable interrupts */
-	outb(0xFF, base + NE2K_ISR); /* NE2K_ISR must be cleared */
+  outb(0x21, base + NE2K_CR);  /* Stop DMA and MAC */
+  outb(0x48, base + NE2K_DCR); /* Access by bytes */
+  outb(0xE0, base + NE2K_TCR); /* Transmit: normal operation, aut-append and check CRC */
+  outb(0xDE, base + NE2K_RCR); /* Receive: Accept and buffer */
+  outb(0x00, base + NE2K_IMR); /* Disable interrupts */
+  outb(0xFF, base + NE2K_ISR); /* NE2K_ISR must be cleared */
 
-	outb(0x40, base + NE2K_TPSR );       /* Transmit page start */
-	outb(rx_next-1, base + NE2K_PSTART); /* Receive page start */
-	outb(0x80, base + NE2K_PSTOP);       /* Receive page stop */
-	outb(rx_next-1, base + NE2K_BNRY);   /* Boundary */
+  outb(0x40, base + NE2K_TPSR );       /* Transmit page start */
+  outb(rx_next-1, base + NE2K_PSTART); /* Receive page start */
+  outb(0x80, base + NE2K_PSTOP);       /* Receive page stop */
+  outb(rx_next-1, base + NE2K_BNRY);   /* Boundary */
   ne2k_page_select(1);
-	outb(rx_next, base + NE2K_CURR);     /* Change current recv page */
+  outb(rx_next, base + NE2K_CURR);     /* Change current recv page */
 
   ne2k_page_select(0);
-	outb(0x00, base + NE2K_RSAR0);       /* Remote start address */
-	outb(0x00, base + NE2K_RSAR1);
-	outb(24, base + NE2K_RBCR0);         /* 24 bytes count */
-	outb(0x00, base + NE2K_RBCR1);
-	outb(0x0A, base + NE2K_CR);
+  outb(0x00, base + NE2K_RSAR0);       /* Remote start address */
+  outb(0x00, base + NE2K_RSAR1);
+  outb(24, base + NE2K_RBCR0);         /* 24 bytes count */
+  outb(0x00, base + NE2K_RBCR1);
+  outb(0x0A, base + NE2K_CR);
 
   /* Print MAC */
   debugstr("net: MAC: ");
-	for(i=0; i<6; i++) {
-		local_mac[i] = inb(base + NE2K_DATA);
+  for(i=0; i<6; i++) {
+    local_mac[i] = inb(base + NE2K_DATA);
     inb(base + NE2K_DATA); /* Word sized, read again to advance */
-		debugstr("%2x ", local_mac[i]);
-	}
-	debugstr("\n\r");
+    debugstr("%2x ", local_mac[i]);
+  }
+  debugstr("\n\r");
 
   /* Listen to this MAC */
-	ne2k_page_select(1);
-	outb(local_mac[0], base + NE2K_PAR0);
-	outb(local_mac[1], base + NE2K_PAR1);
-	outb(local_mac[2], base + NE2K_PAR2);
-	outb(local_mac[3], base + NE2K_PAR3);
-	outb(local_mac[4], base + NE2K_PAR4);
-	outb(local_mac[5], base + NE2K_PAR5);
+  ne2k_page_select(1);
+  outb(local_mac[0], base + NE2K_PAR0);
+  outb(local_mac[1], base + NE2K_PAR1);
+  outb(local_mac[2], base + NE2K_PAR2);
+  outb(local_mac[3], base + NE2K_PAR3);
+  outb(local_mac[4], base + NE2K_PAR4);
+  outb(local_mac[5], base + NE2K_PAR5);
 
   /* Clear multicast */
   for(i=NE2K_MAR0; i<=NE2K_MAR7; i++) {
@@ -954,7 +951,7 @@ uint net_send(uint8_t* dst_ip, uint8_t* buff, uint len)
   if(network_enabled) {
     return udp_send(dst_ip, NSUDP_PROTO_PORT, NSUDP_PROTO_PORT,
       IP_PROTOCOL_UDP, buff, len);
-			return 0;
+      return 0;
   }
   return 1;
 }
@@ -964,18 +961,18 @@ uint net_send(uint8_t* dst_ip, uint8_t* buff, uint len)
  */
 uint net_recv(uint8_t* src_ip, uint8_t* buff, uint buff_size)
 {
-	if(network_enabled) {
-		/* Handle pending nic requests */
-		net_handler();
+  if(network_enabled) {
+    /* Handle pending nic requests */
+    net_handler();
 
-		/* Now check if there is something in the system buffer */
-	  if(rcv_size > 0) {
-	    uint ret = min(rcv_size, buff_size);
-	    memcpy(src_ip, rcv_addr, sizeof(rcv_addr));
-	    memcpy(buff, rcv_buff, ret);
-	    rcv_size = 0;
-	    return ret;
-	  }
-	}
+    /* Now check if there is something in the system buffer */
+    if(rcv_size > 0) {
+      uint ret = min(rcv_size, buff_size);
+      memcpy(src_ip, rcv_addr, sizeof(rcv_addr));
+      memcpy(buff, rcv_buff, ret);
+      rcv_size = 0;
+      return ret;
+    }
+  }
   return 0;
 }
